@@ -43,6 +43,11 @@ export default function App(){
   const[tool,setTool]=useState("poly");const[cDrag,setCDrag]=useState(null);
   const[eDrag,setEDrag]=useState(null);const[rDrag,setRDrag]=useState(null);
   const[placing,setPlacing]=useState(null);
+  const[straight,setStraight]=useState(false);// constrain drawing to H/V
+  const[gridLvl,setGridLvl]=useState(1);// 0=off,1=subtle,2=strong
+  const[pvMode,setPvMode]=useState("single");// "single"|"walkway"|"patio"
+  const[pvCfg,setPvCfg]=useState({spacing:2,count:10,cols:3,rows:3,gap:1});
+  const[pvStart,setPvStart]=useState(null);// walkway first click
   const[view,setView]=useState("edit");
   const[rep,setRep]=useState("");const[cust,setCust]=useState("");const[addr,setAddr]=useState("");const[notes,setNotes]=useState("");
   const[vers,setVers]=useState([]);const[aVer,setAVer]=useState(null);const[showV,setShowV]=useState(false);
@@ -52,7 +57,7 @@ export default function App(){
   useEffect(()=>{(async()=>{try{const r=(() => { try { const v = localStorage.getItem(SK); return v ? {value: v} : null; } catch(e) { return null; } })();if(r&&r.value)setVers(JSON.parse(r.value));}catch(e){}})();},[]);
   const pV=async v=>{try{(() => { try { localStorage.setItem(SK, JSON.stringify(v)); return true; } catch(e) { return false; } })();return true;}catch(e){return false;}};
   const gS=()=>({yard,zones,greens,pvs,fps,rep,cust,addr,notes});
-  const lS=s=>{setYard(s.yard||null);setZones(s.zones||[]);setGreens(s.greens||[]);setPvs(s.pvs||s.pavers||[]);setFps(s.fps||s.firePits||[]);setRep(s.rep||"");setCust(s.cust||"");setAddr(s.addr||"");setNotes(s.notes||"");setDY(!s.yard);setDPts([]);setDMode(null);setSel(null);setSelPv(null);setSelFp(null);setPlacing(null);};
+  const lS=s=>{setYard(s.yard||null);setZones(s.zones||[]);setGreens(s.greens||[]);setPvs(s.pvs||s.pavers||[]);setFps(s.fps||s.firePits||[]);setRep(s.rep||"");setCust(s.cust||"");setAddr(s.addr||"");setNotes(s.notes||"");setDY(!s.yard);setDPts([]);setDMode(null);setSel(null);setSelPv(null);setSelFp(null);setPlacing(null);setStraight(false);setPvStart(null);setPvMode("single");};
   const doSave=async nm=>{const v={id:Date.now(),name:nm||`v${vers.length+1}`,date:new Date().toISOString(),state:gS()};const nv=[v,...vers];if(await pV(nv)){setVers(nv);setAVer(v.id);setSMsg("✓ Saved");}else setSMsg("⚠ Failed");setShowSave(false);setSName("");setTimeout(()=>setSMsg(null),2000);};
   const loadV=id=>{const v=vers.find(x=>x.id===id);if(v){lS(v.state);setAVer(id);setView("edit");setShowV(false);}};
   const delV=async id=>{const nv=vers.filter(x=>x.id!==id);setVers(nv);if(aVer===id)setAVer(null);await pV(nv);};
@@ -71,8 +76,8 @@ export default function App(){
   const clr=()=>{setSel(null);setSelPv(null);setSelFp(null);};
 
   const hDown=useCallback((e,t,pl)=>{e.stopPropagation();if(e.cancelable)e.preventDefault();if(t==='paver'){setEDrag({t:'paver',i:pl.i});setSelPv(pl.i);setSel(null);setSelFp(null);}else if(t==='fp'){setEDrag({t:'fp',i:pl.i});setSelFp(pl.i);setSel(null);setSelPv(null);}else if(t==='rot'){setRDrag(pl.i);setSelPv(pl.i);}else if(t==='v'){if(dY||dMode)return;setDrag(pl);if(pl.layer)setSel({type:pl.layer,idx:pl.idx});}},[dY,dMode]);
-  const hClick=useCallback(e=>{if(drag||eDrag||rDrag!==null)return;const raw=gXY(e),s=sn(raw.x,raw.y);if(placing==='paver'){setPvs(p=>[...p,{x:s.x,y:s.y,rot:0}]);return;}if(placing==='fp'){setFps(p=>[...p,{x:s.x,y:s.y}]);return;}if(dMode&&tool==="circle"){if(!cDrag)setCDrag({cx:s.x,cy:s.y});return;}if(dY){if(yd.length>=3&&Math.hypot(s.x-yd[0].x,s.y-yd[0].y)<20){setYard({v:yd});setYd([]);setDY(false);return;}setYd(p=>[...p,s]);return;}if(dMode){if(dPts.length>=3&&Math.hypot(s.x-dPts[0].x,s.y-dPts[0].y)<20){if(dMode==='zone'){setZones(p=>[...p,{pts:dPts,s:actS,type:tool==="curve"?"curve":"poly"}]);setSel({type:'zone',idx:zones.length});}else{setGreens(p=>[...p,{pts:dPts,type:tool==="curve"?"curve":"poly"}]);setSel({type:'green',idx:greens.length});}setDPts([]);setDMode(null);return;}if(tool==="curve"&&dPts.length>0){const prev=dPts[dPts.length-1];setDPts(p=>[...p,{x:s.x,y:s.y,cx:(prev.x+s.x)/2,cy:(prev.y+s.y)/2}]);}else setDPts(p=>[...p,{x:s.x,y:s.y}]);return;}clr();},[drag,eDrag,rDrag,gXY,dY,yd,dMode,dPts,actS,zones.length,greens.length,tool,cDrag,placing]);
-  const hMove=useCallback(e=>{if(e.cancelable)e.preventDefault();const raw=gXY(e),s=sn(raw.x,raw.y);if(rDrag!==null){const st=pvs[rDrag];if(st){const a=Math.atan2(raw.y-st.y,raw.x-st.x)*180/Math.PI;setPvs(p=>{const u=[...p];u[rDrag]={...u[rDrag],rot:Math.round(a/5)*5};return u;});}return;}if(eDrag){if(eDrag.t==='paver')setPvs(p=>{const u=[...p];u[eDrag.i]={...u[eDrag.i],x:s.x,y:s.y};return u;});else setFps(p=>{const u=[...p];u[eDrag.i]={...u[eDrag.i],x:s.x,y:s.y};return u;});return;}if(cDrag&&dMode&&tool==="circle"){setHov({x:raw.x,y:raw.y,r:Math.hypot(raw.x-cDrag.cx,raw.y-cDrag.cy)});return;}if(drag){if(drag.t==='y'&&yard){const nv=[...yard.v];nv[drag.i]=s;setYard({v:nv});}else if(drag.t==='z'){(drag.layer==='green'?setGreens:setZones)(p=>{const u=[...p];if(u[drag.idx].type==='circle')u[drag.idx]={...u[drag.idx],cx:s.x,cy:s.y};else{const vv=[...u[drag.idx].pts];vv[drag.i]={...vv[drag.i],x:s.x,y:s.y};u[drag.idx]={...u[drag.idx],pts:vv};}return u;});}else if(drag.t==='cp'){(drag.layer==='green'?setGreens:setZones)(p=>{const u=[...p];const vv=[...u[drag.idx].pts];vv[drag.i]={...vv[drag.i],cx:s.x,cy:s.y};u[drag.idx]={...u[drag.idx],pts:vv};return u;});}}else if(dY||dMode)setHov(tool==="circle"?{x:raw.x,y:raw.y}:s);},[drag,eDrag,rDrag,gXY,dY,dMode,yard,tool,cDrag,pvs]);
+  const hClick=useCallback(e=>{if(drag||eDrag||rDrag!==null)return;const raw=gXY(e);let s=sn(raw.x,raw.y);if(straight){const pts=dY?yd:dPts;if(pts.length>0){const last=pts[pts.length-1],dx=Math.abs(s.x-last.x),dy=Math.abs(s.y-last.y);if(dx>dy)s={x:s.x,y:last.y};else s={x:last.x,y:s.y};}}if(placing==='paver'){if(pvMode==='walkway'){if(!pvStart){setPvStart(s);setPvs(p=>[...p,{x:s.x,y:s.y,rot:0}]);return;}const dx=s.x-pvStart.x,dy=s.y-pvStart.y,dist=Math.hypot(dx,dy);if(dist<1){setPvStart(null);return;}const ux=dx/dist,uy=dy/dist,rot=Math.round(Math.atan2(uy,ux)*180/Math.PI/5)*5,stepPx=f2p(pvCfg.spacing);const newPvs=[];for(let i=1;i<pvCfg.count;i++){newPvs.push({x:pvStart.x+ux*stepPx*i,y:pvStart.y+uy*stepPx*i,rot});}setPvs(p=>[...p,...newPvs]);setPvStart(null);return;}if(pvMode==='patio'){const gapPx=f2p(pvCfg.gap+PW),newPvs=[];for(let r=0;r<pvCfg.rows;r++)for(let c=0;c<pvCfg.cols;c++)newPvs.push({x:s.x+c*gapPx,y:s.y+r*gapPx,rot:0});setPvs(p=>[...p,...newPvs]);return;}setPvs(p=>[...p,{x:s.x,y:s.y,rot:0}]);return;}if(placing==='fp'){setFps(p=>[...p,{x:s.x,y:s.y}]);return;}if(dMode&&tool==="circle"){if(!cDrag)setCDrag({cx:s.x,cy:s.y});return;}if(dY){if(yd.length>=3&&Math.hypot(s.x-yd[0].x,s.y-yd[0].y)<20){setYard({v:yd});setYd([]);setDY(false);return;}setYd(p=>[...p,s]);return;}if(dMode){if(dPts.length>=3&&Math.hypot(s.x-dPts[0].x,s.y-dPts[0].y)<20){if(dMode==='zone'){setZones(p=>[...p,{pts:dPts,s:actS,type:tool==="curve"?"curve":"poly"}]);setSel({type:'zone',idx:zones.length});}else{setGreens(p=>[...p,{pts:dPts,type:tool==="curve"?"curve":"poly"}]);setSel({type:'green',idx:greens.length});}setDPts([]);setDMode(null);return;}if(tool==="curve"&&dPts.length>0){const prev=dPts[dPts.length-1];setDPts(p=>[...p,{x:s.x,y:s.y,cx:(prev.x+s.x)/2,cy:(prev.y+s.y)/2}]);}else setDPts(p=>[...p,{x:s.x,y:s.y}]);return;}clr();},[drag,eDrag,rDrag,gXY,dY,yd,dMode,dPts,actS,zones.length,greens.length,tool,cDrag,placing,straight,pvMode,pvCfg,pvStart]);
+  const hMove=useCallback(e=>{if(e.cancelable)e.preventDefault();const raw=gXY(e),s=sn(raw.x,raw.y);if(rDrag!==null){const st=pvs[rDrag];if(st){const a=Math.atan2(raw.y-st.y,raw.x-st.x)*180/Math.PI;setPvs(p=>{const u=[...p];u[rDrag]={...u[rDrag],rot:Math.round(a/5)*5};return u;});}return;}if(eDrag){if(eDrag.t==='paver')setPvs(p=>{const u=[...p];u[eDrag.i]={...u[eDrag.i],x:s.x,y:s.y};return u;});else setFps(p=>{const u=[...p];u[eDrag.i]={...u[eDrag.i],x:s.x,y:s.y};return u;});return;}if(cDrag&&dMode&&tool==="circle"){setHov({x:raw.x,y:raw.y,r:Math.hypot(raw.x-cDrag.cx,raw.y-cDrag.cy)});return;}if(drag){if(drag.t==='y'&&yard){const nv=[...yard.v];nv[drag.i]=s;setYard({v:nv});}else if(drag.t==='z'){(drag.layer==='green'?setGreens:setZones)(p=>{const u=[...p];if(u[drag.idx].type==='circle')u[drag.idx]={...u[drag.idx],cx:s.x,cy:s.y};else{const vv=[...u[drag.idx].pts];vv[drag.i]={...vv[drag.i],x:s.x,y:s.y};u[drag.idx]={...u[drag.idx],pts:vv};}return u;});}else if(drag.t==='cp'){(drag.layer==='green'?setGreens:setZones)(p=>{const u=[...p];const vv=[...u[drag.idx].pts];vv[drag.i]={...vv[drag.i],cx:s.x,cy:s.y};u[drag.idx]={...u[drag.idx],pts:vv};return u;});}}else if(dY||dMode){let h=tool==="circle"?{x:raw.x,y:raw.y}:s;if(straight&&tool!=="circle"){const pts=dY?yd:dPts;if(pts.length>0){const last=pts[pts.length-1],dx=Math.abs(h.x-last.x),dy=Math.abs(h.y-last.y);if(dx>dy)h={x:h.x,y:last.y};else h={x:last.x,y:h.y};}}setHov(h);}else if(placing)setHov(s);},[drag,eDrag,rDrag,gXY,dY,dMode,yard,tool,cDrag,pvs,straight,yd,dPts,placing]);
   const hUp=useCallback(()=>{if(cDrag&&hov?.r>8){if(dMode==='zone'){setZones(p=>[...p,{type:'circle',s:actS,cx:cDrag.cx,cy:cDrag.cy,r:hov.r}]);setSel({type:'zone',idx:zones.length});}else if(dMode==='green'){setGreens(p=>[...p,{type:'circle',cx:cDrag.cx,cy:cDrag.cy,r:hov.r}]);setSel({type:'green',idx:greens.length});}setCDrag(null);setHov(null);setDMode(null);return;}setEDrag(null);setRDrag(null);setDrag(null);},[cDrag,hov,dMode,actS,zones.length,greens.length]);
 
   const isD=dY||!!dMode;const cur=dY?yd:dPts;
@@ -86,6 +91,44 @@ export default function App(){
   const ld=lDim();const selZ=sel?.type==='zone'?zones[sel.idx]:null;const selG=sel?.type==='green'?greens[sel.idx]:null;
   const gSt=vb.wf>100?f2p(5):f2p(1);const mE=vb.wf>100?2:5;
   const hasC=zones.length>0||greens.length>0;
+
+  // Alignment guides: gather all reference points for snap lines
+  const guides=useMemo(()=>{
+    if(!hov&&!drag)return{hLines:[],vLines:[]};
+    const t=hov||{x:0,y:0};const refPts=[];
+    if(yard)yard.v.forEach(p=>refPts.push(p));
+    zones.forEach(z=>{if(z.type==='circle')refPts.push({x:z.cx,y:z.cy});else z.pts.forEach(p=>refPts.push(p));});
+    greens.forEach(g=>{if(g.type==='circle')refPts.push({x:g.cx,y:g.cy});else g.pts.forEach(p=>refPts.push(p));});
+    const cur=dY?yd:dPts;cur.forEach(p=>refPts.push(p));
+    const THRESH=SNAP_PX*1.5,hLines=[],vLines=[];
+    refPts.forEach(p=>{
+      if(Math.abs(t.x-p.x)<THRESH&&Math.abs(t.y-p.y)>THRESH)vLines.push(p.x);
+      if(Math.abs(t.y-p.y)<THRESH&&Math.abs(t.x-p.x)>THRESH)hLines.push(p.y);
+    });
+    return{hLines:[...new Set(hLines)],vLines:[...new Set(vLines)]};
+  },[hov,drag,yard,zones,greens,dY,yd,dPts]);
+
+  // Paver spacing: compute distances between adjacent pavers
+  const pvDists=useMemo(()=>{
+    if(pvs.length<2)return[];
+    const dists=[];
+    for(let i=0;i<pvs.length;i++){
+      let minD=Infinity,minJ=-1;
+      for(let j=0;j<pvs.length;j++){
+        if(i===j)continue;
+        const d=Math.hypot(pvs[i].x-pvs[j].x,pvs[i].y-pvs[j].y);
+        if(d<minD){minD=d;minJ=j;}
+      }
+      if(minJ!==-1&&minJ>i){
+        const a=pvs[i],b=pvs[minJ];
+        // Edge-to-edge distance (approx center-to-center minus half each paver diagonal)
+        const cDist=p2f(Math.hypot(a.x-b.x,a.y-b.y));
+        const edgeDist=Math.max(0,cDist-PW/2-PW/2);
+        dists.push({i,j:minJ,mx:(a.x+b.x)/2,my:(a.y+b.y)/2,d:cDist,edge:edgeDist,ax:a.x,ay:a.y,bx:b.x,by:b.y});
+      }
+    }
+    return dists;
+  },[pvs]);
 
   const dlPDF=()=>{const w=window.open('','_blank','width=800,height=1100');if(!w)return;
     const lines=bI.filter(l=>l.netSF>0).map(l=>`<tr><td>${l.name}</td><td>${l.netSF.toFixed(1)}sf × $${l.price}</td><td style="text-align:right">$${(l.mat+l.lab).toFixed(2)}</td></tr>`).join('');
@@ -120,7 +163,7 @@ export default function App(){
     {yard&&!showSave&&<button onClick={()=>{setSName(`v${vers.length+1} - ${cust||"Quote"}`);setShowSave(true);}} style={{padding:"4px 8px",borderRadius:5,border:`1px solid ${DG}30`,background:`${DG}10`,fontSize:9,fontWeight:600,cursor:"pointer",color:DG}}>Save</button>}
     {showSave&&<div style={{display:"flex",gap:2,alignItems:"center"}}><input autoFocus value={sName} onChange={e=>setSName(e.target.value)} onKeyDown={e=>{if(e.key==='Enter')doSave(sName);if(e.key==='Escape')setShowSave(false);}} style={{padding:"3px 6px",borderRadius:4,border:`1px solid ${DG}44`,fontSize:9,width:110,color:DG,background:"#fff"}}/><button onClick={()=>doSave(sName)} style={{padding:"3px 6px",borderRadius:4,border:"none",background:DG,color:CREAM,fontSize:9,cursor:"pointer"}}>✓</button><button onClick={()=>setShowSave(false)} style={{padding:"3px 6px",borderRadius:4,border:`1px solid ${DG}30`,background:"transparent",fontSize:9,cursor:"pointer",color:DG}}>✕</button></div>}
     {sMsg&&<span style={{fontSize:9,fontWeight:600,color:sMsg.includes("✓")?"#2a7a2a":"#c05030"}}>{sMsg}</span>}
-    {hasC&&["edit","render","quote"].map(m=><button key={m} onClick={()=>setView(m)} style={{padding:"4px 8px",borderRadius:5,border:view===m?`1.5px solid ${DG}`:`1px solid ${DG}30`,background:view===m?`${DG}15`:"transparent",fontSize:9,fontWeight:view===m?700:500,cursor:"pointer",color:DG}}>{m==="render"?"🎨 Render":m==="quote"?`$${grand.toFixed(0)}`:m}</button>)}
+    {hasC&&["edit","render","quote"].map(m=><button key={m} onClick={()=>setView(m)} style={{padding:"4px 8px",borderRadius:5,border:view===m?`1.5px solid ${DG}`:`1px solid ${DG}30`,background:view===m?`${DG}15`:"transparent",fontSize:9,fontWeight:view===m?700:500,cursor:"pointer",color:DG}}>{m==="render"?"🎨 Render":m==="quote"?"Quote":m}</button>)}
   </div>
 </div>
 
@@ -188,7 +231,21 @@ export default function App(){
       </div>:null}
     </div>
     {dMode&&<div style={{padding:"6px 10px",borderBottom:`1px solid ${DG}15`,display:"flex",gap:3}}>{[["poly","▬"],["curve","〰"],["circle","◯"]].map(([id,ic])=><button key={id} onClick={()=>{setTool(id);setDPts([]);setCDrag(null);}} style={{flex:1,padding:"4px",borderRadius:4,border:`1.5px solid ${tool===id?DG:DG+"30"}`,background:tool===id?`${DG}15`:"transparent",cursor:"pointer",fontSize:11,color:tool===id?DG:`${DG}55`}}>{ic}</button>)}</div>}
-    {(placing||dMode)&&<div style={{padding:"6px 10px",borderBottom:`1px solid ${DG}15`}}><button onClick={()=>{setPlacing(null);setDMode(null);setDPts([]);setCDrag(null);}} style={{width:"100%",padding:"5px",borderRadius:4,background:DG,color:CREAM,fontSize:10,fontWeight:600,cursor:"pointer",border:"none"}}>{placing?"Done":"Cancel"}</button></div>}
+    {(dY||dMode)&&<div style={{padding:"5px 10px",borderBottom:`1px solid ${DG}15`}}><button onClick={()=>setStraight(!straight)} style={{width:"100%",padding:"5px",borderRadius:4,border:`1.5px solid ${straight?"#3080d0":DG+"30"}`,background:straight?"#3080d015":"transparent",cursor:"pointer",fontSize:9,fontWeight:600,color:straight?"#3080d0":`${DG}88`,display:"flex",alignItems:"center",justifyContent:"center",gap:4}}>📐 {straight?"Straight ON":"Straight"}</button></div>}
+    {placing==='paver'&&<div style={{padding:"6px 10px",borderBottom:`1px solid ${DG}15`}}>
+      <div style={{display:"flex",gap:2,marginBottom:4}}>{[["single","Single"],["walkway","Walkway"],["patio","Patio"]].map(([id,lb])=><button key={id} onClick={()=>{setPvMode(id);setPvStart(null);}} style={{flex:1,padding:"4px",borderRadius:4,border:`1.5px solid ${pvMode===id?"#8a6a30":"#8a6a3030"}`,background:pvMode===id?"#8a6a3015":"transparent",cursor:"pointer",fontSize:8,fontWeight:pvMode===id?700:400,color:pvMode===id?"#8a6a30":`${DG}77`}}>{lb}</button>)}</div>
+      {pvMode==='walkway'&&<div style={{display:"flex",gap:4,marginTop:2}}>
+        <div style={{flex:1}}><div style={{fontSize:6,color:`${DG}55`,marginBottom:1}}>Spacing (ft)</div><input type="number" value={pvCfg.spacing} onChange={e=>setPvCfg(c=>({...c,spacing:+e.target.value||1}))} style={{width:"100%",padding:"3px 5px",borderRadius:3,border:`1px solid ${DG}30`,fontSize:9,color:DG,background:"#fff"}}/></div>
+        <div style={{flex:1}}><div style={{fontSize:6,color:`${DG}55`,marginBottom:1}}>Count</div><input type="number" value={pvCfg.count} onChange={e=>setPvCfg(c=>({...c,count:Math.max(1,+e.target.value||1)}))} style={{width:"100%",padding:"3px 5px",borderRadius:3,border:`1px solid ${DG}30`,fontSize:9,color:DG,background:"#fff"}}/></div>
+      </div>}
+      {pvMode==='walkway'&&pvStart&&<div style={{fontSize:8,color:"#8a6a30",fontWeight:600,marginTop:3,textAlign:"center"}}>Tap endpoint direction →</div>}
+      {pvMode==='patio'&&<div style={{display:"flex",gap:4,marginTop:2}}>
+        <div style={{flex:1}}><div style={{fontSize:6,color:`${DG}55`,marginBottom:1}}>Cols</div><input type="number" value={pvCfg.cols} onChange={e=>setPvCfg(c=>({...c,cols:Math.max(1,+e.target.value||1)}))} style={{width:"100%",padding:"3px 5px",borderRadius:3,border:`1px solid ${DG}30`,fontSize:9,color:DG,background:"#fff"}}/></div>
+        <div style={{flex:1}}><div style={{fontSize:6,color:`${DG}55`,marginBottom:1}}>Rows</div><input type="number" value={pvCfg.rows} onChange={e=>setPvCfg(c=>({...c,rows:Math.max(1,+e.target.value||1)}))} style={{width:"100%",padding:"3px 5px",borderRadius:3,border:`1px solid ${DG}30`,fontSize:9,color:DG,background:"#fff"}}/></div>
+        <div style={{flex:1}}><div style={{fontSize:6,color:`${DG}55`,marginBottom:1}}>Gap (ft)</div><input type="number" value={pvCfg.gap} onChange={e=>setPvCfg(c=>({...c,gap:+e.target.value||0}))} style={{width:"100%",padding:"3px 5px",borderRadius:3,border:`1px solid ${DG}30`,fontSize:9,color:DG,background:"#fff"}}/></div>
+      </div>}
+    </div>}
+    {(placing||dMode)&&<div style={{padding:"6px 10px",borderBottom:`1px solid ${DG}15`}}><button onClick={()=>{setPlacing(null);setDMode(null);setDPts([]);setCDrag(null);setStraight(false);setPvStart(null);setPvMode("single");}} style={{width:"100%",padding:"5px",borderRadius:4,background:DG,color:CREAM,fontSize:10,fontWeight:600,cursor:"pointer",border:"none"}}>{placing?"Done":"Cancel"}</button></div>}
     {yard&&!dY&&<div style={{flex:1,overflowY:"auto",padding:"4px 0",fontSize:10}}>
       {!dMode&&!placing&&<>{["Turf","Rock"].map(cat=><div key={cat}><div style={{padding:"3px 10px 1px",fontSize:7,fontWeight:600,color:`${DG}77`,letterSpacing:1}}>{cat}</div>
         {BS.filter(x=>x.cat===cat).map(s=><button key={s.id} onClick={()=>{setActS(s.id);if(sel?.type==='zone'&&zones[sel.idx])setZones(p=>{const u=[...p];u[sel.idx]={...u[sel.idx],s:s.id};return u;});}} style={{width:"100%",padding:"4px 10px",border:"none",cursor:"pointer",display:"flex",alignItems:"center",gap:6,background:actS===s.id?`${DG}12`:"transparent",borderRadius:3}}>
@@ -202,14 +259,23 @@ export default function App(){
     </div>}
   </div>
   <div style={{flex:1,display:"flex",flexDirection:"column",background:CREAM,minHeight:0}}>
-    <div style={{padding:"4px 10px",borderBottom:`1px solid ${DG}12`,fontSize:7,color:`${DG}55`}}>{vb.wf}×{vb.hf}ft · 6" snap</div>
+    <div style={{padding:"4px 10px",borderBottom:`1px solid ${DG}12`,fontSize:7,color:`${DG}55`,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+      <span>{vb.wf}×{vb.hf}ft · 6" snap</span>
+      <div style={{display:"flex",alignItems:"center",gap:3}}>
+        <span style={{marginRight:2}}>Grid:</span>
+        {[["Off",0],["Light",1],["Strong",2]].map(([l,v])=><button key={v} onClick={()=>setGridLvl(v)} style={{padding:"1px 5px",borderRadius:3,border:`1px solid ${gridLvl===v?DG:`${DG}30`}`,background:gridLvl===v?`${DG}15`:"transparent",fontSize:7,fontWeight:gridLvl===v?700:400,cursor:"pointer",color:DG}}>{l}</button>)}
+      </div>
+    </div>
     <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",padding:6,minHeight:0}}>
       <svg ref={ref} viewBox={`0 0 ${CW} ${CH}`} preserveAspectRatio="xMinYMin meet" style={{width:"100%",maxHeight:"100%",borderRadius:8,cursor:isD||placing?"crosshair":drag||eDrag||rDrag!==null?"grabbing":"default",background:"#ede5c7",border:`1.5px solid ${DG}20`,touchAction:"none"}} onClick={hClick} onMouseMove={hMove} onMouseUp={hUp} onMouseLeave={hUp} onTouchStart={e=>{if(isD||placing)hClick(e);}} onTouchMove={hMove} onTouchEnd={hUp}>
         <Pats render={false}/>
-        {Array.from({length:Math.floor(CW/gSt)+1}).map((_,i)=><line key={`v${i}`} x1={i*gSt} y1={0} x2={i*gSt} y2={CH} stroke={DG} strokeWidth={i%mE===0?.5:.15} opacity={i%mE===0?.15:.06}/>)}
-        {Array.from({length:Math.floor(CH/gSt)+1}).map((_,i)=><line key={`h${i}`} x1={0} y1={i*gSt} x2={CW} y2={i*gSt} stroke={DG} strokeWidth={i%mE===0?.5:.15} opacity={i%mE===0?.15:.06}/>)}
-        {Array.from({length:Math.floor(vb.wf/10)+1}).map((_,i)=>i>0&&<text key={`xl${i}`} x={f2p(i*10)} y={10} textAnchor="middle" fill={DG} fontSize="7" opacity=".25">{i*10}'</text>)}
-        {Array.from({length:Math.floor(vb.hf/10)+1}).map((_,i)=>i>0&&<text key={`yl${i}`} x={6} y={f2p(i*10)+3} fill={DG} fontSize="7" opacity=".25">{i*10}'</text>)}
+        {gridLvl>0&&Array.from({length:Math.floor(CW/gSt)+1}).map((_,i)=><line key={`v${i}`} x1={i*gSt} y1={0} x2={i*gSt} y2={CH} stroke={DG} strokeWidth={i%mE===0?(gridLvl===2?1:.5):(gridLvl===2?.4:.15)} opacity={i%mE===0?(gridLvl===2?.3:.15):(gridLvl===2?.14:.06)}/>)}
+        {gridLvl>0&&Array.from({length:Math.floor(CH/gSt)+1}).map((_,i)=><line key={`h${i}`} x1={0} y1={i*gSt} x2={CW} y2={i*gSt} stroke={DG} strokeWidth={i%mE===0?(gridLvl===2?1:.5):(gridLvl===2?.4:.15)} opacity={i%mE===0?(gridLvl===2?.3:.15):(gridLvl===2?.14:.06)}/>)}
+        {gridLvl>0&&Array.from({length:Math.floor(vb.wf/10)+1}).map((_,i)=>i>0&&<text key={`xl${i}`} x={f2p(i*10)} y={10} textAnchor="middle" fill={DG} fontSize="7" opacity={gridLvl===2?".4":".25"}>{i*10}'</text>)}
+        {gridLvl>0&&Array.from({length:Math.floor(vb.hf/10)+1}).map((_,i)=>i>0&&<text key={`yl${i}`} x={6} y={f2p(i*10)+3} fill={DG} fontSize="7" opacity={gridLvl===2?".4":".25"}>{i*10}'</text>)}
+        {/* 1ft grid labels for strong mode */}
+        {gridLvl===2&&Array.from({length:Math.floor(vb.wf/5)+1}).map((_,i)=>i>0&&i*5%10!==0&&<text key={`xl5_${i}`} x={f2p(i*5)} y={10} textAnchor="middle" fill={DG} fontSize="5.5" opacity=".2">{i*5}'</text>)}
+        {gridLvl===2&&Array.from({length:Math.floor(vb.hf/5)+1}).map((_,i)=>i>0&&i*5%10!==0&&<text key={`yl5_${i}`} x={6} y={f2p(i*5)+3} fill={DG} fontSize="5.5" opacity=".2">{i*5}'</text>)}
         <g transform={`translate(20,${CH-12})`}><line x1="0" y1="0" x2={f2p(10)} y2="0" stroke={DG} strokeWidth="1.5" opacity=".3"/><text x={f2p(5)} y="-4" textAnchor="middle" fill={DG} fontSize="7" opacity=".4">10ft</text></g>
         {yard&&<polygon points={yard.v.map(v=>`${v.x},${v.y}`).join(" ")} fill={`${DG}08`} stroke={DG} strokeWidth="1.5" strokeDasharray="8 4" opacity=".5"/>}
         {zones.map((z,i)=>renderZone(z,i,sel?.type==='zone'&&sel.idx===i,true))}
@@ -229,6 +295,17 @@ export default function App(){
         {cDrag&&hov?.r&&(()=>{const rf=p2f(hov.r),lb=fmt(rf)+" r",sf=cSF(hov.r);return(<><circle cx={cDrag.cx} cy={cDrag.cy} r={hov.r} fill={dMode==='green'?"#2a5e2033":`${BS.find(x=>x.id===actS)?.color}33`} stroke={dMode==='green'?PUT.color:DG} strokeWidth="1.5" strokeDasharray="6 3"/><rect x={cDrag.cx-34} y={cDrag.cy-9} width={68} height={18} rx={3} fill={dMode==='green'?PUT.color:DG} opacity=".92"/><text x={cDrag.cx} y={cDrag.cy+3} textAnchor="middle" fill="#fff" fontSize="8" fontWeight="700">{lb} · {sf.toFixed(0)}sf</text></>);})()}
         {isD&&cur.map((v,i)=>{const col=dY?"#c87830":dMode==='green'?PUT.color:DG;return(<g key={i}><circle cx={v.x} cy={v.y} r={i===0&&cur.length>=3?8:4} fill={i===0&&cur.length>=3?col:"#fff"} stroke={i===0&&cur.length>=3?"#fff":col} strokeWidth="2"/>{i===0&&cur.length>=3&&<text x={v.x} y={v.y-10} textAnchor="middle" fill={col} fontSize="7" fontWeight="600">close</text>}</g>);})}
         {placing==='fp'&&hov&&<circle cx={hov.x} cy={hov.y} r={FPR_PX} fill="#44444433" stroke="#555" strokeWidth="1" strokeDasharray="4 3"/>}
+        {/* Walkway preview */}
+        {placing==='paver'&&pvMode==='walkway'&&pvStart&&hov&&(()=>{const dx=hov.x-pvStart.x,dy=hov.y-pvStart.y,dist=Math.hypot(dx,dy);if(dist<1)return null;const ux=dx/dist,uy=dy/dist,stepPx=f2p(pvCfg.spacing),rot=Math.round(Math.atan2(uy,ux)*180/Math.PI/5)*5;return(<g>{Array.from({length:pvCfg.count-1}).map((_,i)=>{const px=pvStart.x+ux*stepPx*(i+1),py=pvStart.y+uy*stepPx*(i+1);return<rect key={i} x={px-PW_PX/2} y={py-PH_PX/2} width={PW_PX} height={PH_PX} rx={2} fill="#a0804033" stroke="#a08040" strokeWidth=".7" strokeDasharray="3 2" transform={`rotate(${rot} ${px} ${py})`}/>;})}<line x1={pvStart.x} y1={pvStart.y} x2={pvStart.x+ux*stepPx*(pvCfg.count-1)} y2={pvStart.y+uy*stepPx*(pvCfg.count-1)} stroke="#a08040" strokeWidth=".5" strokeDasharray="4 3" opacity=".4"/></g>);})()}
+        {/* Patio preview */}
+        {placing==='paver'&&pvMode==='patio'&&hov&&(()=>{const gapPx=f2p(pvCfg.gap+PW);return(<g>{Array.from({length:pvCfg.rows}).map((_,r)=>Array.from({length:pvCfg.cols}).map((_,c)=>{const px=hov.x+c*gapPx,py=hov.y+r*gapPx;return<rect key={`${r}-${c}`} x={px-PW_PX/2} y={py-PH_PX/2} width={PW_PX} height={PH_PX} rx={2} fill="#a0804033" stroke="#a08040" strokeWidth=".7" strokeDasharray="3 2"/>;}))}</g>);})()}
+        {/* Straight-line constraint indicator */}
+        {straight&&(dY||dMode)&&hov&&(()=>{const pts=dY?yd:dPts;if(!pts.length)return null;const last=pts[pts.length-1],isH=Math.abs(hov.x-last.x)>=Math.abs(hov.y-last.y);return<line x1={last.x} y1={last.y} x2={isH?hov.x:last.x} y2={isH?last.y:hov.y} stroke={isH?"#3080d0":"#30a040"} strokeWidth="1.2" strokeDasharray="6 3" opacity=".6"/>;})()}
+        {/* Alignment guides */}
+        {(isD||placing)&&hov&&guides.vLines.map((x,i)=><line key={`gv${i}`} x1={x} y1={0} x2={x} y2={CH} stroke="#e06020" strokeWidth=".8" strokeDasharray="4 4" opacity=".55"/>)}
+        {(isD||placing)&&hov&&guides.hLines.map((y,i)=><line key={`gh${i}`} x1={0} y1={y} x2={CW} y2={y} stroke="#e06020" strokeWidth=".8" strokeDasharray="4 4" opacity=".55"/>)}
+        {/* Paver spacing labels */}
+        {(placing==='paver'||selPv!==null)&&pvDists.map((d,i)=>{const lb=fmt(d.d),lw=lb.length*4.5+8;return(<g key={`pd${i}`}><line x1={d.ax} y1={d.ay} x2={d.bx} y2={d.by} stroke="#a08040" strokeWidth=".7" strokeDasharray="3 2" opacity=".6"/><rect x={d.mx-lw/2} y={d.my-7} width={lw} height={13} rx={3} fill="rgba(255,255,255,.92)" stroke="#a0804044" strokeWidth=".5"/><text x={d.mx} y={d.my+2.5} textAnchor="middle" fill="#8a6a30" fontSize="6.5" fontFamily="'JetBrains Mono',monospace" fontWeight="600">{lb}</text></g>);})}
         {dY&&yd.length===0&&<><text x={CW/2} y={CH/2-6} textAnchor="middle" fill={`${DG}55`} fontSize="13" fontWeight="500">Tap to outline the yard</text><text x={CW/2} y={CH/2+10} textAnchor="middle" fill={`${DG}33`} fontSize="9">6" snap · Auto-expands</text></>}
       </svg>
     </div>
