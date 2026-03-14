@@ -52,17 +52,71 @@ export default function App(){
   const[rep,setRep]=useState("");const[cust,setCust]=useState("");const[addr,setAddr]=useState("");const[notes,setNotes]=useState("");
   const[vers,setVers]=useState([]);const[aVer,setAVer]=useState(null);const[showV,setShowV]=useState(false);
   const[sMsg,setSMsg]=useState(null);const[sName,setSName]=useState("");const[showSave,setShowSave]=useState(false);
+  // Quick Layout Builder
+  const[showLayout,setShowLayout]=useState(false);
+  const[layoutData,setLayoutData]=useState({width:'',length:'',cutouts:[],sections:[]});
+  // Undo/Redo
+  const[history,setHistory]=useState([]);const[histIdx,setHistIdx]=useState(-1);const[histLock,setHistLock]=useState(false);
+  // Retaining walls
+  const[walls,setWalls]=useState([]);const[wallHeight,setWallHeight]=useState('');const[showWallH,setShowWallH]=useState(false);
+  const WALL_PRICE=45; // per linear foot
   const PW_PX=f2p(PW),PH_PX=f2p(PH),FPR_PX=f2p(FPR),ROT_D=PW_PX/2+14;
 
   useEffect(()=>{(async()=>{try{const r=(() => { try { const v = localStorage.getItem(SK); return v ? {value: v} : null; } catch(e) { return null; } })();if(r&&r.value)setVers(JSON.parse(r.value));}catch(e){}})();},[]);
   const pV=async v=>{try{(() => { try { localStorage.setItem(SK, JSON.stringify(v)); return true; } catch(e) { return false; } })();return true;}catch(e){return false;}};
-  const gS=()=>({yard,zones,greens,pvs,fps,rep,cust,addr,notes});
-  const lS=s=>{setYard(s.yard||null);setZones(s.zones||[]);setGreens(s.greens||[]);setPvs(s.pvs||s.pavers||[]);setFps(s.fps||s.firePits||[]);setRep(s.rep||"");setCust(s.cust||"");setAddr(s.addr||"");setNotes(s.notes||"");setDY(!s.yard);setDPts([]);setDMode(null);setSel(null);setSelPv(null);setSelFp(null);setPlacing(null);setStraight(false);setPvStart(null);setPvMode("single");};
+  const gS=()=>({yard,zones,greens,pvs,fps,walls,rep,cust,addr,notes});
+  const lS=s=>{setYard(s.yard||null);setZones(s.zones||[]);setGreens(s.greens||[]);setPvs(s.pvs||s.pavers||[]);setFps(s.fps||s.firePits||[]);setWalls(s.walls||[]);setRep(s.rep||"");setCust(s.cust||"");setAddr(s.addr||"");setNotes(s.notes||"");setDY(!s.yard);setDPts([]);setDMode(null);setSel(null);setSelPv(null);setSelFp(null);setPlacing(null);setStraight(false);setPvStart(null);setPvMode("single");};
   const doSave=async nm=>{const v={id:Date.now(),name:nm||`v${vers.length+1}`,date:new Date().toISOString(),state:gS()};const nv=[v,...vers];if(await pV(nv)){setVers(nv);setAVer(v.id);setSMsg("✓ Saved");}else setSMsg("⚠ Failed");setShowSave(false);setSName("");setTimeout(()=>setSMsg(null),2000);};
   const loadV=id=>{const v=vers.find(x=>x.id===id);if(v){lS(v.state);setAVer(id);setView("edit");setShowV(false);}};
   const delV=async id=>{const nv=vers.filter(x=>x.id!==id);setVers(nv);if(aVer===id)setAVer(null);await pV(nv);};
 
-  const allPts=useMemo(()=>{const pts=[];yd.forEach(p=>pts.push(p));if(yard)yard.v.forEach(p=>pts.push(p));zones.forEach(z=>{if(z.type==='circle'){pts.push({x:z.cx-z.r,y:z.cy-z.r},{x:z.cx+z.r,y:z.cy+z.r});}else z.pts.forEach(p=>{pts.push(p);if(p.cx!==undefined)pts.push({x:p.cx,y:p.cy});});});greens.forEach(g=>{if(g.type==='circle'){pts.push({x:g.cx-g.r,y:g.cy-g.r},{x:g.cx+g.r,y:g.cy+g.r});}else g.pts.forEach(p=>{pts.push(p);if(p.cx!==undefined)pts.push({x:p.cx,y:p.cy});});});pvs.forEach(p=>pts.push(p));fps.forEach(p=>{pts.push({x:p.x-FPR_PX,y:p.y-FPR_PX},{x:p.x+FPR_PX,y:p.y+FPR_PX});});dPts.forEach(p=>pts.push(p));if(hov)pts.push(hov);if(cDrag){pts.push({x:cDrag.cx,y:cDrag.cy});if(hov?.r)pts.push({x:cDrag.cx+hov.r,y:cDrag.cy+hov.r},{x:cDrag.cx-hov.r,y:cDrag.cy-hov.r});}return pts;},[yd,yard,zones,greens,pvs,fps,dPts,hov,cDrag]);
+  // --- Undo/Redo ---
+  const snapState=useCallback(()=>{if(histLock)return;const s=JSON.stringify({yard,zones,greens,pvs,fps,walls});const nh=[...history.slice(0,histIdx+1),s];if(nh.length>40)nh.shift();setHistory(nh);setHistIdx(nh.length-1);},[yard,zones,greens,pvs,fps,walls,history,histIdx,histLock]);
+  const undo=useCallback(()=>{if(histIdx<=0)return;const s=JSON.parse(history[histIdx-1]);setHistLock(true);setYard(s.yard);setZones(s.zones);setGreens(s.greens);setPvs(s.pvs);setFps(s.fps);setWalls(s.walls||[]);setHistIdx(histIdx-1);setTimeout(()=>setHistLock(false),50);},[history,histIdx]);
+  const redo=useCallback(()=>{if(histIdx>=history.length-1)return;const s=JSON.parse(history[histIdx+1]);setHistLock(true);setYard(s.yard);setZones(s.zones);setGreens(s.greens);setPvs(s.pvs);setFps(s.fps);setWalls(s.walls||[]);setHistIdx(histIdx+1);setTimeout(()=>setHistLock(false),50);},[history,histIdx]);
+  // Auto-snapshot on meaningful changes
+  useEffect(()=>{if(!histLock&&yard)snapState();},[yard,zones.length,greens.length,pvs.length,fps.length,walls.length]);
+
+  // --- Quick Layout Builder ---
+  const generateLayout=useCallback(()=>{
+    const w=parseFloat(layoutData.width),l=parseFloat(layoutData.length);
+    if(!w||!l||w<=0||l<=0)return;
+    const sx=f2p(PAD_FT),sy=f2p(PAD_FT);
+    const wp=f2p(w),lp=f2p(l);
+    // Build yard polygon with corner cutouts
+    const corners={tl:{x:sx,y:sy},tr:{x:sx+wp,y:sy},br:{x:sx+wp,y:sy+lp},bl:{x:sx,y:sy+lp}};
+    const cutMap={};
+    layoutData.cutouts.forEach(c=>{if(c.pos&&c.w&&c.h)cutMap[c.pos]={w:f2p(parseFloat(c.w)),h:f2p(parseFloat(c.h))};});
+    const verts=[];
+    // Walk clockwise: TL -> TR -> BR -> BL
+    if(cutMap['top-left']){const c=cutMap['top-left'];verts.push({x:sx,y:sy+c.h},{x:sx+c.w,y:sy+c.h},{x:sx+c.w,y:sy});}else verts.push(corners.tl);
+    if(cutMap['top-right']){const c=cutMap['top-right'];verts.push({x:sx+wp-c.w,y:sy},{x:sx+wp-c.w,y:sy+c.h},{x:sx+wp,y:sy+c.h});}else verts.push(corners.tr);
+    if(cutMap['bottom-right']){const c=cutMap['bottom-right'];verts.push({x:sx+wp,y:sy+lp-c.h},{x:sx+wp-c.w,y:sy+lp-c.h},{x:sx+wp-c.w,y:sy+lp});}else verts.push(corners.br);
+    if(cutMap['bottom-left']){const c=cutMap['bottom-left'];verts.push({x:sx+c.w,y:sy+lp},{x:sx+c.w,y:sy+lp-c.h},{x:sx,y:sy+lp-c.h});}else verts.push(corners.bl);
+    // Snap all vertices
+    const snapped=verts.map(v=>sn(v.x,v.y));
+    setYard({v:snapped});setDY(false);
+    // Create a zone covering the yard
+    setZones(prev=>{
+      const newZones=[...prev,{type:'poly',pts:[...snapped],s:actS}];
+      // Add extra sections as separate zones offset to the right
+      layoutData.sections.forEach((sec,i)=>{
+        const sw=parseFloat(sec.w),sh=parseFloat(sec.h);
+        if(!sw||!sh)return;
+        const ox=sx+wp+f2p(5),oy=sy+i*(f2p(sh)+f2p(3));
+        const pts=[sn(ox,oy),sn(ox+f2p(sw),oy),sn(ox+f2p(sw),oy+f2p(sh)),sn(ox,oy+f2p(sh))];
+        newZones.push({type:'poly',pts,s:actS,label:sec.label||`Section ${i+1}`});
+      });
+      return newZones;
+    });
+    setShowLayout(false);setLayoutData({width:'',length:'',cutouts:[],sections:[]});
+    setDPts([]);setDMode(null);clr();
+  },[layoutData,actS]);
+
+  // --- Wall helpers ---
+  const wallLen=useCallback(w=>{let d=0;for(let i=0;i<w.pts.length-1;i++)d+=Math.hypot(w.pts[i+1].x-w.pts[i].x,w.pts[i+1].y-w.pts[i].y);return p2f(d);},[]);
+
+  const allPts=useMemo(()=>{const pts=[];yd.forEach(p=>pts.push(p));if(yard)yard.v.forEach(p=>pts.push(p));zones.forEach(z=>{if(z.type==='circle'){pts.push({x:z.cx-z.r,y:z.cy-z.r},{x:z.cx+z.r,y:z.cy+z.r});}else z.pts.forEach(p=>{pts.push(p);if(p.cx!==undefined)pts.push({x:p.cx,y:p.cy});});});greens.forEach(g=>{if(g.type==='circle'){pts.push({x:g.cx-g.r,y:g.cy-g.r},{x:g.cx+g.r,y:g.cy+g.r});}else g.pts.forEach(p=>{pts.push(p);if(p.cx!==undefined)pts.push({x:p.cx,y:p.cy});});});pvs.forEach(p=>pts.push(p));fps.forEach(p=>{pts.push({x:p.x-FPR_PX,y:p.y-FPR_PX},{x:p.x+FPR_PX,y:p.y+FPR_PX});});walls.forEach(w=>w.pts.forEach(p=>pts.push(p)));dPts.forEach(p=>pts.push(p));if(hov)pts.push(hov);if(cDrag){pts.push({x:cDrag.cx,y:cDrag.cy});if(hov?.r)pts.push({x:cDrag.cx+hov.r,y:cDrag.cy+hov.r},{x:cDrag.cx-hov.r,y:cDrag.cy-hov.r});}return pts;},[yd,yard,zones,greens,pvs,fps,walls,dPts,hov,cDrag]);
   const vb=useMemo(()=>{let wf=DEF_W_FT,hf=DEF_H_FT;if(allPts.length){let mx=0,my=0;allPts.forEach(p=>{if(p.x>mx)mx=p.x;if(p.y>my)my=p.y;});const nw=p2f(mx)+PAD_FT,nh=p2f(my)+PAD_FT;if(nw>wf)wf=Math.ceil(nw/10)*10;if(nh>hf)hf=Math.ceil(nh/10)*10;}return{w:f2p(wf),h:f2p(hf),wf,hf};},[allPts]);
   const CW=vb.w,CH=vb.h;
 
@@ -75,9 +129,9 @@ export default function App(){
   const lDim=useCallback(()=>{if(!hov)return null;const pts=dY?yd:dPts;if(!pts.length)return null;const last=pts[pts.length-1],d=p2f(Math.hypot(hov.x-last.x,hov.y-last.y));if(d<0.5)return null;return{x:(last.x+hov.x)/2,y:(last.y+hov.y)/2,d};},[hov,dY,yd,dPts]);
   const clr=()=>{setSel(null);setSelPv(null);setSelFp(null);};
 
-  const hDown=useCallback((e,t,pl)=>{e.stopPropagation();if(e.cancelable)e.preventDefault();if(t==='paver'){setEDrag({t:'paver',i:pl.i});setSelPv(pl.i);setSel(null);setSelFp(null);}else if(t==='fp'){setEDrag({t:'fp',i:pl.i});setSelFp(pl.i);setSel(null);setSelPv(null);}else if(t==='rot'){setRDrag(pl.i);setSelPv(pl.i);}else if(t==='v'){if(dY||dMode)return;setDrag(pl);if(pl.layer)setSel({type:pl.layer,idx:pl.idx});}},[dY,dMode]);
+  const hDown=useCallback((e,t,pl)=>{e.stopPropagation();if(e.cancelable)e.preventDefault();if(t==='paver'){setEDrag({t:'paver',i:pl.i});setSelPv(pl.i);setSel(null);setSelFp(null);}else if(t==='fp'){setEDrag({t:'fp',i:pl.i});setSelFp(pl.i);setSel(null);setSelPv(null);}else if(t==='rot'){setRDrag(pl.i);setSelPv(pl.i);}else if(t==='zmove'){if(dY||dMode)return;const raw=gXY(e);setDrag({t:'zmove',layer:pl.layer,idx:pl.idx,sx:raw.x,sy:raw.y,oPts:pl.layer==='zone'?zones[pl.idx]?.pts?.map(p=>({...p})):greens[pl.idx]?.pts?.map(p=>({...p}))});setSel({type:pl.layer,idx:pl.idx});setSelPv(null);setSelFp(null);}else if(t==='v'){if(dY||dMode)return;setDrag(pl);if(pl.layer)setSel({type:pl.layer,idx:pl.idx});}},[dY,dMode,gXY,zones,greens]);
   const hClick=useCallback(e=>{if(drag||eDrag||rDrag!==null)return;const raw=gXY(e);let s=sn(raw.x,raw.y);if(straight){const pts=dY?yd:dPts;if(pts.length>0){const last=pts[pts.length-1],dx=Math.abs(s.x-last.x),dy=Math.abs(s.y-last.y);if(dx>dy)s={x:s.x,y:last.y};else s={x:last.x,y:s.y};}}if(placing==='paver'){if(pvMode==='walkway'){if(!pvStart){setPvStart(s);setPvs(p=>[...p,{x:s.x,y:s.y,rot:0}]);return;}const dx=s.x-pvStart.x,dy=s.y-pvStart.y,dist=Math.hypot(dx,dy);if(dist<1){setPvStart(null);return;}const ux=dx/dist,uy=dy/dist,rot=Math.round(Math.atan2(uy,ux)*180/Math.PI/5)*5,stepPx=f2p(pvCfg.spacing);const newPvs=[];for(let i=1;i<pvCfg.count;i++){newPvs.push({x:pvStart.x+ux*stepPx*i,y:pvStart.y+uy*stepPx*i,rot});}setPvs(p=>[...p,...newPvs]);setPvStart(null);return;}if(pvMode==='patio'){const gapPx=f2p(pvCfg.gap+PW),newPvs=[];for(let r=0;r<pvCfg.rows;r++)for(let c=0;c<pvCfg.cols;c++)newPvs.push({x:s.x+c*gapPx,y:s.y+r*gapPx,rot:0});setPvs(p=>[...p,...newPvs]);return;}setPvs(p=>[...p,{x:s.x,y:s.y,rot:0}]);return;}if(placing==='fp'){setFps(p=>[...p,{x:s.x,y:s.y}]);return;}if(dMode&&tool==="circle"){if(!cDrag)setCDrag({cx:s.x,cy:s.y});return;}if(dY){if(yd.length>=3&&Math.hypot(s.x-yd[0].x,s.y-yd[0].y)<20){setYard({v:yd});setYd([]);setDY(false);return;}setYd(p=>[...p,s]);return;}if(dMode){if(dPts.length>=3&&Math.hypot(s.x-dPts[0].x,s.y-dPts[0].y)<20){if(dMode==='zone'){setZones(p=>[...p,{pts:dPts,s:actS,type:tool==="curve"?"curve":"poly"}]);setSel({type:'zone',idx:zones.length});}else{setGreens(p=>[...p,{pts:dPts,type:tool==="curve"?"curve":"poly"}]);setSel({type:'green',idx:greens.length});}setDPts([]);setDMode(null);return;}if(tool==="curve"&&dPts.length>0){const prev=dPts[dPts.length-1];setDPts(p=>[...p,{x:s.x,y:s.y,cx:(prev.x+s.x)/2,cy:(prev.y+s.y)/2}]);}else setDPts(p=>[...p,{x:s.x,y:s.y}]);return;}clr();},[drag,eDrag,rDrag,gXY,dY,yd,dMode,dPts,actS,zones.length,greens.length,tool,cDrag,placing,straight,pvMode,pvCfg,pvStart]);
-  const hMove=useCallback(e=>{if(e.cancelable)e.preventDefault();const raw=gXY(e),s=sn(raw.x,raw.y);if(rDrag!==null){const st=pvs[rDrag];if(st){const a=Math.atan2(raw.y-st.y,raw.x-st.x)*180/Math.PI;setPvs(p=>{const u=[...p];u[rDrag]={...u[rDrag],rot:Math.round(a/5)*5};return u;});}return;}if(eDrag){if(eDrag.t==='paver')setPvs(p=>{const u=[...p];u[eDrag.i]={...u[eDrag.i],x:s.x,y:s.y};return u;});else setFps(p=>{const u=[...p];u[eDrag.i]={...u[eDrag.i],x:s.x,y:s.y};return u;});return;}if(cDrag&&dMode&&tool==="circle"){setHov({x:raw.x,y:raw.y,r:Math.hypot(raw.x-cDrag.cx,raw.y-cDrag.cy)});return;}if(drag){if(drag.t==='y'&&yard){const nv=[...yard.v];nv[drag.i]=s;setYard({v:nv});}else if(drag.t==='z'){(drag.layer==='green'?setGreens:setZones)(p=>{const u=[...p];if(u[drag.idx].type==='circle')u[drag.idx]={...u[drag.idx],cx:s.x,cy:s.y};else{const vv=[...u[drag.idx].pts];vv[drag.i]={...vv[drag.i],x:s.x,y:s.y};u[drag.idx]={...u[drag.idx],pts:vv};}return u;});}else if(drag.t==='cp'){(drag.layer==='green'?setGreens:setZones)(p=>{const u=[...p];const vv=[...u[drag.idx].pts];vv[drag.i]={...vv[drag.i],cx:s.x,cy:s.y};u[drag.idx]={...u[drag.idx],pts:vv};return u;});}}else if(dY||dMode){let h=tool==="circle"?{x:raw.x,y:raw.y}:s;if(straight&&tool!=="circle"){const pts=dY?yd:dPts;if(pts.length>0){const last=pts[pts.length-1],dx=Math.abs(h.x-last.x),dy=Math.abs(h.y-last.y);if(dx>dy)h={x:h.x,y:last.y};else h={x:last.x,y:h.y};}}setHov(h);}else if(placing)setHov(s);},[drag,eDrag,rDrag,gXY,dY,dMode,yard,tool,cDrag,pvs,straight,yd,dPts,placing]);
+  const hMove=useCallback(e=>{if(e.cancelable)e.preventDefault();const raw=gXY(e),s=sn(raw.x,raw.y);if(rDrag!==null){const st=pvs[rDrag];if(st){const a=Math.atan2(raw.y-st.y,raw.x-st.x)*180/Math.PI;setPvs(p=>{const u=[...p];u[rDrag]={...u[rDrag],rot:Math.round(a/5)*5};return u;});}return;}if(eDrag){if(eDrag.t==='paver')setPvs(p=>{const u=[...p];u[eDrag.i]={...u[eDrag.i],x:s.x,y:s.y};return u;});else setFps(p=>{const u=[...p];u[eDrag.i]={...u[eDrag.i],x:s.x,y:s.y};return u;});return;}if(cDrag&&dMode&&tool==="circle"){setHov({x:raw.x,y:raw.y,r:Math.hypot(raw.x-cDrag.cx,raw.y-cDrag.cy)});return;}if(drag){if(drag.t==='zmove'&&drag.oPts){const dx=raw.x-drag.sx,dy=raw.y-drag.sy;const newPts=drag.oPts.map(p=>sn(p.x+dx,p.y+dy));(drag.layer==='green'?setGreens:setZones)(prev=>{const u=[...prev];u[drag.idx]={...u[drag.idx],pts:newPts};return u;});}else if(drag.t==='y'&&yard){const nv=[...yard.v];nv[drag.i]=s;setYard({v:nv});}else if(drag.t==='z'){(drag.layer==='green'?setGreens:setZones)(p=>{const u=[...p];if(u[drag.idx].type==='circle')u[drag.idx]={...u[drag.idx],cx:s.x,cy:s.y};else{const vv=[...u[drag.idx].pts];vv[drag.i]={...vv[drag.i],x:s.x,y:s.y};u[drag.idx]={...u[drag.idx],pts:vv};}return u;});}else if(drag.t==='cp'){(drag.layer==='green'?setGreens:setZones)(p=>{const u=[...p];const vv=[...u[drag.idx].pts];vv[drag.i]={...vv[drag.i],cx:s.x,cy:s.y};u[drag.idx]={...u[drag.idx],pts:vv};return u;});}}else if(dY||dMode){let h=tool==="circle"?{x:raw.x,y:raw.y}:s;if(straight&&tool!=="circle"){const pts=dY?yd:dPts;if(pts.length>0){const last=pts[pts.length-1],dx=Math.abs(h.x-last.x),dy=Math.abs(h.y-last.y);if(dx>dy)h={x:h.x,y:last.y};else h={x:last.x,y:h.y};}}setHov(h);}else if(placing)setHov(s);},[drag,eDrag,rDrag,gXY,dY,dMode,yard,tool,cDrag,pvs,straight,yd,dPts,placing]);
   const hUp=useCallback(()=>{if(cDrag&&hov?.r>8){if(dMode==='zone'){setZones(p=>[...p,{type:'circle',s:actS,cx:cDrag.cx,cy:cDrag.cy,r:hov.r}]);setSel({type:'zone',idx:zones.length});}else if(dMode==='green'){setGreens(p=>[...p,{type:'circle',cx:cDrag.cx,cy:cDrag.cy,r:hov.r}]);setSel({type:'green',idx:greens.length});}setCDrag(null);setHov(null);setDMode(null);return;}setEDrag(null);setRDrag(null);setDrag(null);},[cDrag,hov,dMode,actS,zones.length,greens.length]);
 
   const isD=dY||!!dMode;const cur=dY?yd:dPts;
