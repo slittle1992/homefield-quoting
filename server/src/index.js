@@ -46,8 +46,11 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'Internal server error' });
 });
 
-app.listen(PORT, () => {
-  console.log(`PoolDrop server running on port ${PORT}`);
-});
+// Only start listening when run directly (not when imported for tests)
+if (require.main === module) {
+  app.listen(PORT, () => {
+    console.log(`PoolDrop server running on port ${PORT}`);
+  });
+}
 
 module.exports = app;

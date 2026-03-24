@@ -7,7 +7,11 @@
     "dev": "nodemon src/index.js",
     "start": "node src/index.js",
     "migrate": "node src/db/migrate.js",
-    "seed": "node src/db/seed.js"
+    "seed": "node src/db/seed.js",
+    "test": "jest --forceExit --detectOpenHandles"
+  },
+  "jest": {
+    "testPathIgnorePatterns": ["/node_modules/", "setup\\.js$"]
   },
   "dependencies": {
     "axios": "^1.6.0",
@@ -22,6 +26,9 @@
     "pg": "^8.11.3"
   },
   "devDependencies": {
-    "nodemon": "^3.0.2"
+    "@jest/globals": "^30.3.0",
+    "jest": "^30.3.0",
+    "nodemon": "^3.0.2",
+    "supertest": "^7.2.2"
   }
 }
