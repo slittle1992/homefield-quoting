@@ -255,13 +255,19 @@ router.get('/:id', authenticate, async (req, res) => {
 router.post('/', authenticate, async (req, res) => {
   try {
     const {
-      address, city, state, zip, latitude, longitude,
+      address, address_street, address_city, address_state, address_zip,
+      city, state, zip, latitude, longitude,
       owner_name, property_value, year_built, subdivision,
       pool_type, lead_source, mls_listing_id, mls_status,
       campaign_total_drops,
     } = req.body;
 
-    if (!address) {
+    const resolvedAddress = address || address_street;
+    const resolvedCity = city || address_city;
+    const resolvedState = state || address_state;
+    const resolvedZip = zip || address_zip;
+
+    if (!resolvedAddress) {
       return res.status(400).json({ error: 'Address is required' });
     }
 
@@ -285,7 +291,7 @@ router.post('/', authenticate, async (req, res) => {
         $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17
       ) RETURNING *
     `, [
-      address, city, state || 'TX', zip,
+      resolvedAddress, resolvedCity, resolvedState || 'TX', resolvedZip,
       latitude || null, longitude || null,
       owner_name || null, property_value || null,
       year_built || null, subdivision || null,
