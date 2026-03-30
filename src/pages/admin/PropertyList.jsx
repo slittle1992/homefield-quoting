@@ -11,6 +11,7 @@ import {
   Ban,
   X,
   Check,
+  Trash2,
 } from 'lucide-react';
 import Layout from '../../components/Layout';
 import LoadingSpinner from '../../components/LoadingSpinner';
@@ -385,6 +386,18 @@ function PropertyDetailSlideOver({ property, onClose, onRefresh }) {
     }
   };
 
+  const handleDelete = async () => {
+    if (!window.confirm(`Delete "${property.address_street || property.address}"? This cannot be undone.`)) return;
+    try {
+      await api.delete(`/properties/${property.id}`);
+      toast.success('Property deleted');
+      onClose();
+      onRefresh();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Failed to delete');
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex justify-end">
       <div className="fixed inset-0 bg-black/30" onClick={onClose} />
@@ -419,6 +432,13 @@ function PropertyDetailSlideOver({ property, onClose, onRefresh }) {
               >
                 <Edit3 className="w-3.5 h-3.5" />
                 Edit
+              </button>
+              <button
+                onClick={handleDelete}
+                className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 rounded-lg"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                Delete
               </button>
             )}
             <button onClick={onClose} className="p-1.5 hover:bg-slate-100 rounded-lg">

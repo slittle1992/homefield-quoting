@@ -221,7 +221,8 @@ router.get('/', authenticate, async (req, res) => {
 
     const dataParams = [...params, parseInt(limit), parseInt(offset)];
     const result = await pool.query(
-      `SELECT * FROM properties ${whereClause}
+      `SELECT *, address AS address_street, city AS address_city, state AS address_state, zip AS address_zip
+       FROM properties ${whereClause}
        ORDER BY updated_at DESC
        LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`,
       dataParams
@@ -242,7 +243,7 @@ router.get('/', authenticate, async (req, res) => {
 // GET /api/properties/:id - get single property
 router.get('/:id', authenticate, async (req, res) => {
   try {
-    const result = await pool.query('SELECT * FROM properties WHERE id = $1', [req.params.id]);
+    const result = await pool.query('SELECT *, address AS address_street, city AS address_city, state AS address_state, zip AS address_zip FROM properties WHERE id = $1', [req.params.id]);
 
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Property not found' });
