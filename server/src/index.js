@@ -47,9 +47,18 @@ app.get('/api/health', (req, res) => {
 
 // Serve frontend in production
 if (process.env.NODE_ENV === 'production') {
-  const distPath = path.join(__dirname, '..', '..', 'dist');
+  // Try multiple possible dist locations
+  const possiblePaths = [
+    path.join(__dirname, '..', '..', 'dist'),
+    path.join(process.cwd(), 'dist'),
+    '/app/dist',
+  ];
+  const fs = require('fs');
+  const distPath = possiblePaths.find(p => fs.existsSync(p)) || possiblePaths[0];
+  console.log('Serving frontend from:', distPath);
   app.use(express.static(distPath));
-  app.get('*', (req, res) => {
+  // Only catch non-API routes for SPA fallback
+  app.get(/^(?!\/api\/).*/, (req, res) => {
     res.sendFile(path.join(distPath, 'index.html'));
   });
 }
