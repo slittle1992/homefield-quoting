@@ -15,6 +15,7 @@ const exportRoutes = require('./routes/export');
 const metaRoutes = require('./routes/meta');
 const webhookRoutes = require('./routes/webhooks');
 const ghlRoutes = require('./routes/ghl');
+const permitRoutes = require('./routes/permits');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -42,6 +43,7 @@ app.use('/api/export', exportRoutes);
 app.use('/api/meta', metaRoutes);
 app.use('/api/webhooks', webhookRoutes);
 app.use('/api/ghl', ghlRoutes);
+app.use('/api/permits', permitRoutes);
 
 // Debug endpoint to check property/drop state
 app.get('/api/debug', authenticate, async (req, res) => {
@@ -110,6 +112,13 @@ if (require.main === module) {
       const { startMailerWorker } = require('./services/mailerWorker');
       startMailerWorker();
       console.log('Mailer worker started');
+    }
+
+    // Start permit scraper worker if enabled
+    if (process.env.PERMIT_SCRAPE_ENABLED === 'true') {
+      const { startPermitWorker } = require('./services/permitWorker');
+      startPermitWorker();
+      console.log('Permit scraper worker started');
     }
   });
 }

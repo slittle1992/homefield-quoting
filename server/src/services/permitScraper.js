@@ -266,16 +266,17 @@ async function processPermitResults(county, permits) {
       // Log to permit_imports
       await pool.query(`
         INSERT INTO permit_imports (
-          property_id, county, permit_number, permit_date, permit_type, raw_data
-        ) VALUES ($1, $2, $3, $4, $5, $6)
-        ON CONFLICT (permit_number) WHERE permit_number IS NOT NULL DO NOTHING
+          property_id, county, permit_number, permit_date, permit_type, address, owner_name
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+        ON CONFLICT (county, permit_number) DO NOTHING
       `, [
         propertyId,
         county,
         permit.permit_number || null,
         permit.permit_date || null,
         permit.permit_type || null,
-        JSON.stringify(permit),
+        address,
+        permit.owner_name || null,
       ]);
     } catch (err) {
       console.error(`Permit scraper: error processing permit for "${address}":`, err.message);

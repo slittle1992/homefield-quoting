@@ -31,12 +31,13 @@ router.get('/imports', async (req, res) => {
     const [imports, countResult] = await Promise.all([
       pool.query(`
         SELECT pi.id, pi.property_id, pi.county, pi.permit_number,
-               pi.permit_date, pi.permit_type, pi.created_at,
-               p.address, p.owner_name, p.campaign_status
+               pi.permit_date, pi.permit_type, pi.imported_at,
+               pi.address, pi.owner_name,
+               p.campaign_status
         FROM permit_imports pi
         LEFT JOIN properties p ON p.id = pi.property_id
         ${whereClause}
-        ORDER BY pi.created_at DESC
+        ORDER BY pi.imported_at DESC
         LIMIT $1 OFFSET $2
       `, params),
       pool.query(`
@@ -104,7 +105,7 @@ router.get('/counties', async (req, res) => {
     const statsResult = await pool.query(`
       SELECT county,
              COUNT(*) as total_imported,
-             MAX(created_at) as last_scraped
+             MAX(imported_at) as last_scraped
       FROM permit_imports
       GROUP BY county
     `);
@@ -122,7 +123,7 @@ router.get('/counties', async (req, res) => {
     try {
       const savedResult = await pool.query(`
         SELECT config FROM integrations
-        WHERE provider = 'permit_scraper' AND is_active = true
+        WHERE provider LIKE 'permit_scraper_%' AND is_active = true
       `);
       savedCounties = savedResult.rows.map((r) => r.config);
     } catch (err) {
@@ -190,14 +191,24 @@ router.post('/counties', async (req, res) => {
       parser: null,
     };
 
-    // Persist to integrations table
-    await pool.query(`
-      INSERT INTO integrations (provider, name, config, is_active)
-      VALUES ('permit_scraper', $1, $2, true)
-      ON CONFLICT (provider, name) DO UPDATE SET
-        config = EXCLUDED.config,
-        updated_at = NOW()
-    `, [countyKey, JSON.stringify(config)]);
+    // Persist to integrations table — use provider column to identify permit scraper counties
+    // Check if this county already has a row
+    const existing = await pool.query(
+      `SELECT id FROM integrations WHERE provider = $1`,
+      [`permit_scraper_${countyKey}`]
+    );
+
+    if (existing.rows.length > 0) {
+      await pool.query(`
+        UPDATE integrations SET config = $1, is_active = true, updated_at = NOW()
+        WHERE id = $2
+      `, [JSON.stringify(config), existing.rows[0].id]);
+    } else {
+      await pool.query(`
+        INSERT INTO integrations (provider, config, is_active)
+        VALUES ($1, $2, true)
+      `, [`permit_scraper_${countyKey}`, JSON.stringify(config)]);
+    }
 
     res.json({ county: config });
   } catch (err) {
