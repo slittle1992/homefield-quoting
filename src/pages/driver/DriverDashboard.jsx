@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { MapPin, CheckCircle2, Clock, Route, LogOut, Droplets } from 'lucide-react';
+import { MapPin, CheckCircle2, Clock, Route, LogOut, Droplets, Navigation } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import DropBadge from '../../components/DropBadge';
 import LoadingSpinner from '../../components/LoadingSpinner';
@@ -59,8 +59,13 @@ export default function DriverDashboard() {
         latitude,
         longitude,
       });
-      toast.success(`Delivered: ${drop.address_street}`);
-      fetchDrops();
+      toast.success(`Delivered: ${drop.address_street || drop.address}`);
+      await fetchDrops();
+      // Auto-scroll to next undelivered drop
+      setTimeout(() => {
+        const nextCard = document.querySelector('[data-next-drop]');
+        if (nextCard) nextCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 300);
     } catch (err) {
       const errMsg = err.response?.data?.error || 'Failed to mark delivered';
       if (err.response?.data?.distance_warning) {
@@ -158,11 +163,13 @@ export default function DriverDashboard() {
         ) : (
           drops.map((drop, index) => {
             const isDelivered = drop.status === 'delivered';
+            const isNextDrop = !isDelivered && !drops.slice(0, index).some(d => d.status !== 'delivered');
             return (
               <div
                 key={drop.id || index}
+                {...(isNextDrop ? { 'data-next-drop': true } : {})}
                 className={`bg-white rounded-xl border shadow-sm p-4 transition-colors ${
-                  isDelivered ? 'border-green-200 bg-green-50/50' : 'border-slate-200'
+                  isDelivered ? 'border-green-200 bg-green-50/50' : isNextDrop ? 'border-blue-400 ring-2 ring-blue-100' : 'border-slate-200'
                 }`}
               >
                 <div className="flex items-start justify-between gap-3">
@@ -182,30 +189,41 @@ export default function DriverDashboard() {
                       {drop.address_city}, TX {drop.address_zip}
                     </p>
                   </div>
-                  <div className="flex-shrink-0">
-                    {isDelivered ? (
-                      <div className="flex items-center gap-1.5 text-green-600">
-                        <CheckCircle2 className="w-6 h-6" />
-                        <span className="text-xs font-medium">Done</span>
-                      </div>
-                    ) : (
-                      <button
-                        onClick={() => handleMarkDelivered(drop)}
-                        disabled={delivering === drop.id}
-                        className="flex items-center gap-2 px-4 py-3 bg-green-600 hover:bg-green-700 disabled:bg-green-400 text-white font-medium rounded-xl transition-colors text-sm min-w-[130px] justify-center"
-                      >
-                        {delivering === drop.id ? (
-                          <LoadingSpinner size="sm" />
-                        ) : (
-                          <>
-                            <CheckCircle2 className="w-5 h-5" />
-                            Delivered
-                          </>
-                        )}
-                      </button>
-                    )}
-                  </div>
                 </div>
+                {isDelivered ? (
+                  <div className="flex items-center gap-1.5 text-green-600 mt-2">
+                    <CheckCircle2 className="w-5 h-5" />
+                    <span className="text-sm font-medium">Delivered</span>
+                  </div>
+                ) : (
+                  <div className="flex gap-2 mt-3">
+                    <a
+                      href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(
+                        `${drop.address_street || drop.address}, ${drop.address_city || drop.city}, TX ${drop.address_zip || drop.zip}`
+                      )}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-xl transition-colors text-sm"
+                    >
+                      <Navigation className="w-5 h-5" />
+                      Navigate
+                    </a>
+                    <button
+                      onClick={() => handleMarkDelivered(drop)}
+                      disabled={delivering === drop.id}
+                      className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-green-600 hover:bg-green-700 disabled:bg-green-400 text-white font-medium rounded-xl transition-colors text-sm"
+                    >
+                      {delivering === drop.id ? (
+                        <LoadingSpinner size="sm" />
+                      ) : (
+                        <>
+                          <CheckCircle2 className="w-5 h-5" />
+                          Delivered
+                        </>
+                      )}
+                    </button>
+                  </div>
+                )}
               </div>
             );
           })
