@@ -257,15 +257,40 @@ export default function AdminDashboard() {
       if (!spottingMode) return;
       const { lng, lat } = e.lngLat;
       try {
-        const res = await api.post('/properties/reverse-geocode', { latitude: lat, longitude: lng });
-        setSpotPopup({ lng, lat, address: res.data });
+        const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${lng},${lat}.json?access_token=${mapboxToken}&limit=1`;
+        const response = await fetch(url);
+        const data = await response.json();
+
+        if (data.features && data.features.length > 0) {
+          const feature = data.features[0];
+          const context = feature.context || [];
+          const getCtx = (type) => {
+            const item = context.find((c) => c.id.startsWith(type));
+            return item ? item.text : '';
+          };
+          const houseNum = feature.address || '';
+          const street = feature.text || '';
+          const fullStreet = houseNum ? `${houseNum} ${street}` : feature.place_name;
+
+          setSpotPopup({
+            lng, lat,
+            address: {
+              address_street: fullStreet,
+              address_city: getCtx('place') || getCtx('locality'),
+              address_state: getCtx('region') || 'TX',
+              address_zip: getCtx('postcode'),
+            },
+          });
+        } else {
+          throw new Error('No results');
+        }
       } catch {
         setSpotPopup({
           lng,
           lat,
           address: {
             address_street: `${lat.toFixed(5)}, ${lng.toFixed(5)}`,
-            address_city: 'Cedar Park',
+            address_city: '',
             address_state: 'TX',
             address_zip: '',
           },
