@@ -39,6 +39,8 @@ export default function AdminDashboard() {
   const mapRef = useRef(null);
   const markersRef = useRef([]);
   const popupRef = useRef(null);
+  const spottingModeRef = useRef(false);
+  const mapboxTokenRef = useRef('');
 
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [filters, setFilters] = useState({ leadSource: '', campaignStatus: '', subdivision: '' });
@@ -51,6 +53,10 @@ export default function AdminDashboard() {
   const [spottedCount, setSpottedCount] = useState(0);
   const [spotPopup, setSpotPopup] = useState(null);
   const [mapboxToken, setMapboxToken] = useState(import.meta.env.VITE_MAPBOX_TOKEN || '');
+
+  // Keep refs in sync with state
+  useEffect(() => { spottingModeRef.current = spottingMode; }, [spottingMode]);
+  useEffect(() => { mapboxTokenRef.current = mapboxToken; }, [mapboxToken]);
 
   useEffect(() => {
     if (!mapboxToken) {
@@ -254,10 +260,12 @@ export default function AdminDashboard() {
     if (!mapRef.current || !mapLoaded) return;
 
     const handleClick = async (e) => {
-      if (!spottingMode) return;
+      if (!spottingModeRef.current) return;
+      const token = mapboxTokenRef.current;
+      if (!token) return;
       const { lng, lat } = e.lngLat;
       try {
-        const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${lng},${lat}.json?access_token=${mapboxToken}&limit=1`;
+        const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${lng},${lat}.json?access_token=${token}&limit=1`;
         const response = await fetch(url);
         const data = await response.json();
 
@@ -301,7 +309,7 @@ export default function AdminDashboard() {
     const map = mapRef.current;
     map.on('click', handleClick);
     return () => map.off('click', handleClick);
-  }, [spottingMode, mapLoaded]);
+  }, [mapLoaded]);
 
   useEffect(() => {
     const handleKeyDown = (e) => {
