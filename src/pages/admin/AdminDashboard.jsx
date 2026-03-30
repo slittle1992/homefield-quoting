@@ -7,7 +7,6 @@ import PropertyPopup from '../../components/PropertyPopup';
 import api from '../../services/api';
 import toast from 'react-hot-toast';
 
-const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN;
 const DEFAULT_CENTER = [-97.82, 30.51];
 const DEFAULT_ZOOM = 12;
 
@@ -51,6 +50,15 @@ export default function AdminDashboard() {
   const [spottingMode, setSpottingMode] = useState(false);
   const [spottedCount, setSpottedCount] = useState(0);
   const [spotPopup, setSpotPopup] = useState(null);
+  const [mapboxToken, setMapboxToken] = useState(import.meta.env.VITE_MAPBOX_TOKEN || '');
+
+  useEffect(() => {
+    if (!mapboxToken) {
+      api.get('/config').then(res => {
+        if (res.data.mapboxToken) setMapboxToken(res.data.mapboxToken);
+      }).catch(() => {});
+    }
+  }, [mapboxToken]);
 
   const loadStats = useCallback(async () => {
     try {
@@ -93,14 +101,14 @@ export default function AdminDashboard() {
   }, [loadProperties]);
 
   useEffect(() => {
-    if (!MAPBOX_TOKEN || !mapContainerRef.current || mapRef.current) return;
+    if (!mapboxToken || !mapContainerRef.current || mapRef.current) return;
 
     let cancelled = false;
 
     import('mapbox-gl').then((mapboxgl) => {
       if (cancelled || mapRef.current) return;
 
-      mapboxgl.default.accessToken = MAPBOX_TOKEN;
+      mapboxgl.default.accessToken = mapboxToken;
 
       const map = new mapboxgl.default.Map({
         container: mapContainerRef.current,
@@ -128,7 +136,7 @@ export default function AdminDashboard() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [mapboxToken]);
 
   const renderMarkers = useCallback(async () => {
     if (!mapRef.current || !mapLoaded) return;
@@ -315,7 +323,7 @@ export default function AdminDashboard() {
     }
   };
 
-  if (!MAPBOX_TOKEN) {
+  if (!mapboxToken) {
     return (
       <Layout>
         <div className="flex-1 flex items-center justify-center bg-slate-100">

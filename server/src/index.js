@@ -35,6 +35,11 @@ app.use('/api/drivers', driversRoutes);
 app.use('/api/campaigns', campaignsRoutes);
 app.use('/api/export', exportRoutes);
 
+// Public config (exposes non-secret settings to frontend)
+app.get('/api/config', (req, res) => {
+  res.json({ mapboxToken: process.env.MAPBOX_ACCESS_TOKEN || '' });
+});
+
 // Health check
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });

@@ -13,8 +13,6 @@ import DropBadge from '../../components/DropBadge';
 import api from '../../services/api';
 import toast from 'react-hot-toast';
 
-const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN;
-
 export default function DriverRoute() {
   const navigate = useNavigate();
   const mapContainerRef = useRef(null);
@@ -27,6 +25,15 @@ export default function DriverRoute() {
   const [delivering, setDelivering] = useState(false);
   const [userLocation, setUserLocation] = useState(null);
   const [distanceWarning, setDistanceWarning] = useState(null);
+  const [mapboxToken, setMapboxToken] = useState(import.meta.env.VITE_MAPBOX_TOKEN || '');
+
+  useEffect(() => {
+    if (!mapboxToken) {
+      api.get('/config').then(res => {
+        if (res.data.mapboxToken) setMapboxToken(res.data.mapboxToken);
+      }).catch(() => {});
+    }
+  }, [mapboxToken]);
 
   const fetchDrops = useCallback(async () => {
     try {
@@ -66,14 +73,14 @@ export default function DriverRoute() {
   }, []);
 
   useEffect(() => {
-    if (!MAPBOX_TOKEN || !mapContainerRef.current || mapRef.current || drops.length === 0) return;
+    if (!mapboxToken || !mapContainerRef.current || mapRef.current || drops.length === 0) return;
 
     let cancelled = false;
 
     import('mapbox-gl').then((mapboxgl) => {
       if (cancelled || mapRef.current) return;
 
-      mapboxgl.default.accessToken = MAPBOX_TOKEN;
+      mapboxgl.default.accessToken = mapboxToken;
 
       const validDrops = drops.filter((d) => d.longitude && d.latitude);
       const center = validDrops.length > 0
@@ -159,7 +166,7 @@ export default function DriverRoute() {
     return () => {
       cancelled = true;
     };
-  }, [drops]);
+  }, [drops, mapboxToken]);
 
   const updateMarkerColor = useCallback(async (dropId, color) => {
     const found = markersRef.current.find((m) => m.dropId === dropId);
@@ -285,7 +292,7 @@ export default function DriverRoute() {
     );
   }
 
-  if (!MAPBOX_TOKEN) {
+  if (!mapboxToken) {
     return (
       <div className="min-h-screen bg-slate-50 flex flex-col">
         <header className="bg-white border-b border-slate-200 px-4 py-3 flex items-center gap-3">
