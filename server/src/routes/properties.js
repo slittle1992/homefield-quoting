@@ -53,12 +53,10 @@ router.get('/map', authenticate, async (req, res) => {
       SELECT id, latitude, longitude, campaign_status, campaign_drops_completed,
              campaign_total_drops, lead_source, do_not_drop
       FROM properties
-      WHERE geom IS NOT NULL
-        AND ST_Intersects(
-          geom,
-          ST_MakeEnvelope($1, $2, $3, $4, 4326)::geography
-        )
-    `, [sw_lng, sw_lat, ne_lng, ne_lat]);
+      WHERE latitude IS NOT NULL AND longitude IS NOT NULL
+        AND latitude BETWEEN $1 AND $2
+        AND longitude BETWEEN $3 AND $4
+    `, [sw_lat, ne_lat, sw_lng, ne_lng]);
 
     res.json({ properties: result.rows });
   } catch (err) {
@@ -156,8 +154,8 @@ router.get('/', authenticate, async (req, res) => {
     }
 
     if (sw_lat && sw_lng && ne_lat && ne_lng) {
-      conditions.push(`geom IS NOT NULL AND ST_Intersects(geom, ST_MakeEnvelope($${paramIndex}, $${paramIndex + 1}, $${paramIndex + 2}, $${paramIndex + 3}, 4326)::geography)`);
-      params.push(sw_lng, sw_lat, ne_lng, ne_lat);
+      conditions.push(`latitude IS NOT NULL AND longitude IS NOT NULL AND latitude BETWEEN $${paramIndex} AND $${paramIndex + 1} AND longitude BETWEEN $${paramIndex + 2} AND $${paramIndex + 3}`);
+      params.push(sw_lat, ne_lat, sw_lng, ne_lng);
       paramIndex += 4;
     }
 
@@ -247,10 +245,6 @@ router.post('/', authenticate, async (req, res) => {
       return res.status(400).json({ error: 'Address is required' });
     }
 
-    const geomExpr = (latitude != null && longitude != null)
-      ? `ST_SetSRID(ST_MakePoint($6, $5), 4326)::geography`
-      : 'NULL';
-
     // Determine initial campaign state
     let campaignStatus = 'not_started';
     let campaignNextDropDate = null;
@@ -262,12 +256,12 @@ router.post('/', authenticate, async (req, res) => {
 
     const result = await pool.query(`
       INSERT INTO properties (
-        address, city, state, zip, latitude, longitude, geom,
+        address, city, state, zip, latitude, longitude,
         owner_name, property_value, year_built, subdivision,
         pool_type, lead_source, mls_listing_id, mls_status,
         campaign_total_drops, campaign_status, campaign_next_drop_date
       ) VALUES (
-        $1, $2, $3, $4, $5, $6, ${geomExpr},
+        $1, $2, $3, $4, $5, $6,
         $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17
       ) RETURNING *
     `, [
@@ -342,13 +336,6 @@ router.put('/:id', authenticate, async (req, res) => {
     addField('campaign_total_drops', campaign_total_drops);
     addField('campaign_status', campaign_status);
     addField('campaign_next_drop_date', campaign_next_drop_date);
-
-    // Update geom if lat/lng provided
-    if (latitude !== undefined && longitude !== undefined && latitude != null && longitude != null) {
-      fields.push(`geom = ST_SetSRID(ST_MakePoint($${paramIndex}, $${paramIndex + 1}), 4326)::geography`);
-      params.push(longitude, latitude);
-      paramIndex += 2;
-    }
 
     fields.push(`updated_at = NOW()`);
 

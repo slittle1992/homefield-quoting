@@ -3,8 +3,6 @@ require('dotenv').config({ path: require('path').join(__dirname, '../../.env') }
 const pool = require('../config/database');
 
 const schema = `
-CREATE EXTENSION IF NOT EXISTS postgis;
-
 -- Properties table
 CREATE TABLE IF NOT EXISTS properties (
   id SERIAL PRIMARY KEY,
@@ -14,7 +12,6 @@ CREATE TABLE IF NOT EXISTS properties (
   zip TEXT,
   latitude DECIMAL(10, 7),
   longitude DECIMAL(10, 7),
-  geom GEOGRAPHY(POINT, 4326),
   owner_name TEXT,
   property_value INTEGER,
   year_built INTEGER,
@@ -155,7 +152,7 @@ CREATE TABLE IF NOT EXISTS mailer_schedule (
 );
 
 -- Indexes
-CREATE INDEX IF NOT EXISTS idx_properties_geom ON properties USING GIST(geom);
+CREATE INDEX IF NOT EXISTS idx_properties_lat_lng ON properties(latitude, longitude);
 CREATE INDEX IF NOT EXISTS idx_properties_subdivision ON properties(subdivision);
 CREATE INDEX IF NOT EXISTS idx_properties_campaign ON properties(campaign_status, campaign_next_drop_date);
 CREATE INDEX IF NOT EXISTS idx_drop_queue_date ON drop_queue(scheduled_date, status);

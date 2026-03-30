@@ -237,12 +237,16 @@ router.post('/:id/deliver', authenticate, async (req, res) => {
     // Calculate distance if both coords available
     let distanceMeters = null;
     if (delivery_lat && delivery_lng && property.latitude && property.longitude) {
+      // Haversine distance in meters
       const distResult = await pool.query(`
-        SELECT ST_Distance(
-          ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography,
-          ST_SetSRID(ST_MakePoint($3, $4), 4326)::geography
+        SELECT (
+          6371000 * acos(
+            cos(radians($1)) * cos(radians($3)) *
+            cos(radians($4) - radians($2)) +
+            sin(radians($1)) * sin(radians($3))
+          )
         ) as distance
-      `, [delivery_lng, delivery_lat, property.longitude, property.latitude]);
+      `, [delivery_lat, delivery_lng, property.latitude, property.longitude]);
       distanceMeters = distResult.rows[0].distance;
     }
 
