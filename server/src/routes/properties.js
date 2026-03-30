@@ -114,12 +114,16 @@ router.post('/reverse-geocode', authenticate, async (req, res) => {
       return item ? item.text : null;
     };
 
+    // Build street address: "123 Main St" format
+    const houseNumber = feature.address || '';
+    const streetName = feature.text || '';
+    const streetAddress = houseNumber ? `${houseNumber} ${streetName}` : streetName;
+
     res.json({
-      address: feature.place_name,
-      street: feature.text + (feature.address ? ` ${feature.address}` : ''),
-      city: getContext('place'),
-      state: getContext('region'),
-      zip: getContext('postcode'),
+      address_street: streetAddress || feature.place_name,
+      address_city: getContext('place') || '',
+      address_state: getContext('region') || 'TX',
+      address_zip: getContext('postcode') || '',
       latitude,
       longitude,
     });
