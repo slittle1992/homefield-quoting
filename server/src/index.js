@@ -98,6 +98,13 @@ app.use((err, req, res, next) => {
 if (require.main === module) {
   app.listen(PORT, () => {
     console.log(`PoolDrop server running on port ${PORT}`);
+
+    // Start mailer worker if enabled
+    if (process.env.MAILER_ENABLED === 'true') {
+      const { startMailerWorker } = require('./services/mailerWorker');
+      startMailerWorker();
+      console.log('Mailer worker started');
+    }
   });
 }
 

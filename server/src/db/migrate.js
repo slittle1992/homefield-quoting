@@ -151,12 +151,59 @@ CREATE TABLE IF NOT EXISTS mailer_schedule (
   days_after_previous INTEGER NOT NULL
 );
 
+-- Meta campaigns
+CREATE TABLE IF NOT EXISTS meta_campaigns (
+  id SERIAL PRIMARY KEY,
+  meta_campaign_id TEXT,
+  meta_adset_id TEXT,
+  meta_audience_id TEXT,
+  name TEXT,
+  status TEXT DEFAULT 'pending',
+  daily_budget_cents INTEGER DEFAULT 2000,
+  total_properties INTEGER,
+  filter_criteria JSONB,
+  reach INTEGER DEFAULT 0,
+  impressions INTEGER DEFAULT 0,
+  clicks INTEGER DEFAULT 0,
+  leads INTEGER DEFAULT 0,
+  launched_at TIMESTAMP,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Integrations
+CREATE TABLE IF NOT EXISTS integrations (
+  id SERIAL PRIMARY KEY,
+  provider TEXT NOT NULL,
+  api_key TEXT,
+  location_id TEXT,
+  config JSONB DEFAULT '{}',
+  is_active BOOLEAN DEFAULT true,
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Permit imports
+CREATE TABLE IF NOT EXISTS permit_imports (
+  id SERIAL PRIMARY KEY,
+  county TEXT NOT NULL,
+  permit_number TEXT,
+  address TEXT,
+  owner_name TEXT,
+  permit_type TEXT,
+  permit_date DATE,
+  property_id INTEGER REFERENCES properties(id),
+  imported_at TIMESTAMP DEFAULT NOW(),
+  UNIQUE(county, permit_number)
+);
+
 -- Indexes
 CREATE INDEX IF NOT EXISTS idx_properties_lat_lng ON properties(latitude, longitude);
 CREATE INDEX IF NOT EXISTS idx_properties_subdivision ON properties(subdivision);
 CREATE INDEX IF NOT EXISTS idx_properties_campaign ON properties(campaign_status, campaign_next_drop_date);
 CREATE INDEX IF NOT EXISTS idx_drop_queue_date ON drop_queue(scheduled_date, status);
 CREATE INDEX IF NOT EXISTS idx_mailer_queue_date ON mailer_queue(scheduled_date, status);
+CREATE INDEX IF NOT EXISTS idx_meta_campaigns_status ON meta_campaigns(status);
+CREATE INDEX IF NOT EXISTS idx_permit_imports_county ON permit_imports(county, permit_date);
 `;
 
 async function migrate() {
