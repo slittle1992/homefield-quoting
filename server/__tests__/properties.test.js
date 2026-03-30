@@ -316,12 +316,13 @@ describe('Properties Routes', () => {
       expect(res.body.properties).toHaveLength(1);
     });
 
-    it('should return 400 without bounding box params', async () => {
+    it('should return 200 without bounding box params (returns all)', async () => {
+      mockQuery.mockResolvedValueOnce({ rows: [] });
       const res = await request(app)
         .get('/api/properties/map')
         .set('Authorization', `Bearer ${adminToken()}`);
 
-      expect(res.status).toBe(400);
+      expect(res.status).toBe(200);
     });
   });
 

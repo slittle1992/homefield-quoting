@@ -72,6 +72,9 @@ describe('Drops Routes', () => {
         ],
       });
 
+      // Mock driver lookup
+      mockQuery.mockResolvedValueOnce({ rows: [{ id: 5 }] });
+
       // Mock the INSERT for each drop
       mockQuery.mockResolvedValueOnce({ rows: [{ id: 10, property_id: 1, drop_number: 1, priority: 30 }] });
       mockQuery.mockResolvedValueOnce({ rows: [{ id: 11, property_id: 2, drop_number: 3, priority: 20 }] });
@@ -85,8 +88,8 @@ describe('Drops Routes', () => {
       expect(res.body.generated_count).toBe(3);
       expect(res.body.total_eligible).toBe(3);
 
-      // First insert should be the MLS lead (highest priority)
-      const firstInsertParams = mockQuery.mock.calls[1][1];
+      // First insert should be the MLS lead (highest priority) - call index 2 (after props + driver)
+      const firstInsertParams = mockQuery.mock.calls[2][1];
       expect(firstInsertParams[0]).toBe(1); // MLS property id
       expect(firstInsertParams[3]).toBe(30); // MLS priority
     });
@@ -100,6 +103,9 @@ describe('Drops Routes', () => {
         campaign_total_drops: 4,
       }));
       mockQuery.mockResolvedValueOnce({ rows: properties });
+
+      // Mock driver lookup
+      mockQuery.mockResolvedValueOnce({ rows: [{ id: 5 }] });
 
       // Mock INSERT for each (only 50 should be inserted)
       for (let i = 0; i < 50; i++) {
