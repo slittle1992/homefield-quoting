@@ -426,20 +426,22 @@ function PropertyDetailSlideOver({ property, onClose, onRefresh }) {
                 </button>
               </>
             ) : (
-              <button
-                onClick={() => setEditing(true)}
-                className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-100 rounded-lg"
-              >
-                <Edit3 className="w-3.5 h-3.5" />
-                Edit
-              </button>
-              <button
-                onClick={handleDelete}
-                className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 rounded-lg"
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-                Delete
-              </button>
+              <>
+                <button
+                  onClick={() => setEditing(true)}
+                  className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-100 rounded-lg"
+                >
+                  <Edit3 className="w-3.5 h-3.5" />
+                  Edit
+                </button>
+                <button
+                  onClick={handleDelete}
+                  className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 rounded-lg"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  Delete
+                </button>
+              </>
             )}
             <button onClick={onClose} className="p-1.5 hover:bg-slate-100 rounded-lg">
               <X className="w-5 h-5 text-slate-400" />
