@@ -152,6 +152,31 @@ router.get('/stats', authenticate, async (req, res) => {
   }
 });
 
+// POST /api/drops/assign-unassigned - assign all unassigned drops to the first driver
+router.post('/assign-unassigned', authenticate, requireRole('admin'), async (req, res) => {
+  try {
+    const driverResult = await pool.query(
+      `SELECT id FROM users WHERE role = 'driver' ORDER BY id ASC LIMIT 1`
+    );
+    if (driverResult.rows.length === 0) {
+      return res.status(400).json({ error: 'No driver users found' });
+    }
+    const driverId = driverResult.rows[0].id;
+
+    const result = await pool.query(`
+      UPDATE drop_queue
+      SET assigned_driver_id = $1, status = 'assigned'
+      WHERE assigned_driver_id IS NULL AND status IN ('queued', 'assigned')
+      RETURNING id
+    `, [driverId]);
+
+    res.json({ assigned: result.rows.length, driver_id: driverId });
+  } catch (err) {
+    console.error('Assign unassigned error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // POST /api/drops/generate - generate today's drop list
 router.post('/generate', authenticate, requireRole('admin'), async (req, res) => {
   try {
