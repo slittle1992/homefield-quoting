@@ -99,14 +99,37 @@ router.post('/reverse-geocode', authenticate, async (req, res) => {
       return res.status(500).json({ error: 'Mapbox access token not configured' });
     }
 
-    const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${longitude},${latitude}.json?access_token=${token}&types=address`;
-    const response = await axios.get(url);
-
-    if (!response.data.features || response.data.features.length === 0) {
-      return res.status(404).json({ error: 'No address found for these coordinates' });
+    // Try with address type first, then fall back to any type
+    let feature = null;
+    for (const types of ['address', 'poi,address,place']) {
+      const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${longitude},${latitude}.json?access_token=${token}&types=${types}&limit=1`;
+      const response = await axios.get(url);
+      if (response.data.features && response.data.features.length > 0) {
+        feature = response.data.features[0];
+        break;
+      }
     }
 
-    const feature = response.data.features[0];
+    if (!feature) {
+      // Last resort: no type filter at all
+      const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${longitude},${latitude}.json?access_token=${token}&limit=1`;
+      const response = await axios.get(url);
+      if (response.data.features && response.data.features.length > 0) {
+        feature = response.data.features[0];
+      }
+    }
+
+    if (!feature) {
+      return res.json({
+        address_street: `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`,
+        address_city: '',
+        address_state: 'TX',
+        address_zip: '',
+        latitude,
+        longitude,
+      });
+    }
+
     const context = feature.context || [];
 
     const getContext = (type) => {
@@ -117,11 +140,11 @@ router.post('/reverse-geocode', authenticate, async (req, res) => {
     // Build street address: "123 Main St" format
     const houseNumber = feature.address || '';
     const streetName = feature.text || '';
-    const streetAddress = houseNumber ? `${houseNumber} ${streetName}` : streetName;
+    const streetAddress = houseNumber ? `${houseNumber} ${streetName}` : feature.place_name;
 
     res.json({
-      address_street: streetAddress || feature.place_name,
-      address_city: getContext('place') || '',
+      address_street: streetAddress,
+      address_city: getContext('place') || getContext('locality') || '',
       address_state: getContext('region') || 'TX',
       address_zip: getContext('postcode') || '',
       latitude,
