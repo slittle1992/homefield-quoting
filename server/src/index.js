@@ -4,6 +4,7 @@ const express = require('express');
 const cors = require('cors');
 const path = require('path');
 
+const { authenticate } = require('./middleware/auth');
 const authRoutes = require('./routes/auth');
 const propertiesRoutes = require('./routes/properties');
 const dropsRoutes = require('./routes/drops');
@@ -35,8 +36,8 @@ app.use('/api/drivers', driversRoutes);
 app.use('/api/campaigns', campaignsRoutes);
 app.use('/api/export', exportRoutes);
 
-// Public config (exposes non-secret settings to frontend)
-app.get('/api/config', (req, res) => {
+// Config (requires login)
+app.get('/api/config', authenticate, (req, res) => {
   res.json({ mapboxToken: process.env.MAPBOX_ACCESS_TOKEN || '' });
 });
 
