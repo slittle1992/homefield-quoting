@@ -19,7 +19,9 @@ router.get('/today', authenticate, async (req, res) => {
     }
 
     const result = await pool.query(`
-      SELECT dq.*, p.address, p.city, p.state, p.zip, p.latitude, p.longitude,
+      SELECT dq.*, p.address, p.address AS address_street, p.city, p.city AS address_city,
+             p.state, p.state AS address_state, p.zip, p.zip AS address_zip,
+             p.latitude, p.longitude,
              p.owner_name, p.pool_type, p.lead_source, p.subdivision,
              p.campaign_drops_completed, p.campaign_total_drops
       FROM drop_queue dq
@@ -184,15 +186,21 @@ router.post('/generate', authenticate, requireRole('admin'), async (req, res) =>
     // Cap at daily limit
     const toGenerate = prioritized.slice(0, dailyLimit);
 
+    // Find the first active driver to assign drops to
+    const driverResult = await pool.query(
+      `SELECT id FROM users WHERE role = 'driver' ORDER BY id ASC LIMIT 1`
+    );
+    const driverId = driverResult.rows.length > 0 ? driverResult.rows[0].id : null;
+
     // Insert into drop_queue
     const generated = [];
     for (const prop of toGenerate) {
       const dropNumber = prop.campaign_drops_completed + 1;
       const insertResult = await pool.query(`
-        INSERT INTO drop_queue (property_id, drop_number, scheduled_date, priority, status)
-        VALUES ($1, $2, $3, $4, 'queued')
+        INSERT INTO drop_queue (property_id, drop_number, scheduled_date, priority, status, assigned_driver_id)
+        VALUES ($1, $2, $3, $4, 'assigned', $5)
         RETURNING *
-      `, [prop.id, dropNumber, today, prop.priority]);
+      `, [prop.id, dropNumber, today, prop.priority, driverId]);
 
       generated.push(insertResult.rows[0]);
     }
