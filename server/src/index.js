@@ -37,6 +37,29 @@ app.use('/api/drivers', driversRoutes);
 app.use('/api/campaigns', campaignsRoutes);
 app.use('/api/export', exportRoutes);
 
+// Debug endpoint to check property/drop state
+app.get('/api/debug', authenticate, async (req, res) => {
+  const pool = require('./config/database');
+  const propStats = await pool.query(`
+    SELECT campaign_status, campaign_next_drop_date, do_not_drop,
+           campaign_drops_completed, campaign_total_drops, COUNT(*) as count
+    FROM properties
+    GROUP BY campaign_status, campaign_next_drop_date, do_not_drop,
+             campaign_drops_completed, campaign_total_drops
+  `);
+  const dropStats = await pool.query(`
+    SELECT status, assigned_driver_id, scheduled_date, COUNT(*) as count
+    FROM drop_queue
+    GROUP BY status, assigned_driver_id, scheduled_date
+  `);
+  const users = await pool.query(`SELECT id, name, email, role FROM users`);
+  res.json({
+    properties: propStats.rows,
+    drops: dropStats.rows,
+    users: users.rows,
+  });
+});
+
 // Config (requires login)
 app.get('/api/config', authenticate, (req, res) => {
   res.json({ mapboxToken: process.env.MAPBOX_ACCESS_TOKEN || '' });
