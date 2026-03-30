@@ -10,6 +10,7 @@ import PropertyList from './pages/admin/PropertyList';
 import CampaignSettings from './pages/admin/CampaignSettings';
 import AnalyticsPage from './pages/admin/AnalyticsPage';
 import ExportPage from './pages/admin/ExportPage';
+import IntegrationsPage from './pages/admin/IntegrationsPage';
 import DriverDashboard from './pages/driver/DriverDashboard';
 import DriverRoute from './pages/driver/DriverRoute';
 
@@ -78,6 +79,7 @@ export default function App() {
         <Route path="/admin/campaigns" element={<ProtectedRoute requiredRole="admin"><CampaignSettings /></ProtectedRoute>} />
         <Route path="/admin/analytics" element={<ProtectedRoute requiredRole="admin"><AnalyticsPage /></ProtectedRoute>} />
         <Route path="/admin/export" element={<ProtectedRoute requiredRole="admin"><ExportPage /></ProtectedRoute>} />
+        <Route path="/admin/integrations" element={<ProtectedRoute requiredRole="admin"><IntegrationsPage /></ProtectedRoute>} />
         <Route path="/driver" element={<ProtectedRoute requiredRole="driver"><DriverDashboard /></ProtectedRoute>} />
         <Route path="/driver/route" element={<ProtectedRoute requiredRole="driver"><DriverRoute /></ProtectedRoute>} />
         <Route path="*" element={<Navigate to="/" replace />} />

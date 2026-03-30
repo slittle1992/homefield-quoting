@@ -7,6 +7,7 @@ import {
   Settings,
   BarChart3,
   Download,
+  Plug,
   LogOut,
   Droplets,
   Menu,
@@ -22,6 +23,7 @@ const navLinks = [
   { to: '/admin/campaigns', label: 'Campaigns', icon: Settings },
   { to: '/admin/analytics', label: 'Analytics', icon: BarChart3 },
   { to: '/admin/export', label: 'Export', icon: Download },
+  { to: '/admin/integrations', label: 'Integrations', icon: Plug },
 ];
 
 export default function Layout({ children }) {
