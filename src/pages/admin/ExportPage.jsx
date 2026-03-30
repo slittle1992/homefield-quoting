@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Download, Share2, Users, Calendar, FileSpreadsheet } from 'lucide-react';
+import { Download, Share2, Users, Calendar, FileSpreadsheet, Rocket, Pause, Play, X } from 'lucide-react';
 import Layout from '../../components/Layout';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import api from '../../services/api';
@@ -14,6 +14,26 @@ const CAMPAIGN_STATUSES = [
   { value: 'converted', label: 'Converted' },
 ];
 
+const AD_TEMPLATES = [
+  { index: 0, name: 'Neighborhood Trust' },
+  { index: 1, name: 'Pool Season' },
+  { index: 2, name: 'Already Servicing Nearby' },
+];
+
+function MetaStatusBadge({ status }) {
+  const styles = {
+    ACTIVE: 'bg-green-100 text-green-700',
+    PAUSED: 'bg-yellow-100 text-yellow-700',
+    PENDING: 'bg-gray-100 text-gray-600',
+  };
+  const cls = styles[status] || styles.PENDING;
+  return (
+    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${cls}`}>
+      {status || 'PENDING'}
+    </span>
+  );
+}
+
 export default function ExportPage() {
   const [selectedStatuses, setSelectedStatuses] = useState(['flyer_complete', 'mailer_complete']);
   const [leadSource, setLeadSource] = useState('');
@@ -26,6 +46,18 @@ export default function ExportPage() {
   const [exporting, setExporting] = useState(false);
   const [exportHistory, setExportHistory] = useState([]);
   const [historyLoading, setHistoryLoading] = useState(true);
+
+  // Meta campaign launch modal state
+  const [showLaunchModal, setShowLaunchModal] = useState(false);
+  const [launchBudget, setLaunchBudget] = useState(20);
+  const [launchDuration, setLaunchDuration] = useState(14);
+  const [launchTemplate, setLaunchTemplate] = useState(0);
+  const [launching, setLaunching] = useState(false);
+
+  // Meta campaigns list state
+  const [metaCampaigns, setMetaCampaigns] = useState([]);
+  const [metaCampaignsLoading, setMetaCampaignsLoading] = useState(true);
+  const [togglingCampaign, setTogglingCampaign] = useState(null);
 
   const getFilterParams = useCallback(() => {
     const params = {};
@@ -67,6 +99,21 @@ export default function ExportPage() {
       .catch(() => setExportHistory([]))
       .finally(() => setHistoryLoading(false));
   }, []);
+
+  const fetchMetaCampaigns = useCallback(async () => {
+    try {
+      const res = await api.get('/meta/campaigns');
+      setMetaCampaigns(res.data.campaigns || []);
+    } catch {
+      setMetaCampaigns([]);
+    } finally {
+      setMetaCampaignsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchMetaCampaigns();
+  }, [fetchMetaCampaigns]);
 
   const handleStatusToggle = (status) => {
     setSelectedStatuses((prev) =>
@@ -120,6 +167,49 @@ export default function ExportPage() {
       toast.error(err.response?.data?.error || 'Export failed');
     } finally {
       setExporting(false);
+    }
+  };
+
+  const handleLaunchMeta = async () => {
+    setLaunching(true);
+    try {
+      const filters = getFilterParams();
+      const payload = {
+        campaign_status: filters.campaign_statuses ? filters.campaign_statuses.split(',') : undefined,
+        lead_source: filters.lead_source || undefined,
+        subdivision: filters.subdivision || undefined,
+        date_range: (filters.date_from || filters.date_to)
+          ? { start: filters.date_from || undefined, end: filters.date_to || undefined }
+          : undefined,
+        daily_budget: Math.round(launchBudget * 100),
+        duration_days: launchDuration,
+        template_index: launchTemplate,
+      };
+      const res = await api.post('/meta/launch', payload);
+      const campaign = res.data.campaign;
+      toast.success(
+        `Meta campaign "${campaign?.campaign_name || 'New Campaign'}" created! Status: ${campaign?.status || 'PAUSED'}`
+      );
+      setShowLaunchModal(false);
+      fetchMetaCampaigns();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Failed to launch Meta campaign');
+    } finally {
+      setLaunching(false);
+    }
+  };
+
+  const handleToggleCampaign = async (campaign) => {
+    const action = campaign.status === 'ACTIVE' ? 'pause' : 'activate';
+    setTogglingCampaign(campaign.id);
+    try {
+      await api.post(`/meta/campaigns/${campaign.id}/${action}`);
+      toast.success(`Campaign ${action === 'pause' ? 'paused' : 'activated'}`);
+      fetchMetaCampaigns();
+    } catch (err) {
+      toast.error(err.response?.data?.error || `Failed to ${action} campaign`);
+    } finally {
+      setTogglingCampaign(null);
     }
   };
 
@@ -251,9 +341,18 @@ export default function ExportPage() {
                 <Users className="w-4 h-4" />
                 {exporting ? 'Exporting...' : 'Export Converted Customers'}
               </button>
+              <button
+                onClick={() => setShowLaunchModal(true)}
+                disabled={previewCount === 0 || previewCount === null}
+                className="flex items-center justify-center gap-2 px-5 py-2.5 bg-violet-600 hover:bg-violet-700 disabled:bg-violet-300 text-white text-sm font-medium rounded-lg transition-colors"
+              >
+                <Rocket className="w-4 h-4" />
+                Launch Meta Campaign
+              </button>
             </div>
           </div>
 
+          {/* Export History */}
           <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
             <div className="px-6 py-4 border-b border-slate-200">
               <h2 className="text-base font-semibold text-slate-900">Export History</h2>
@@ -311,8 +410,175 @@ export default function ExportPage() {
               </div>
             )}
           </div>
+
+          {/* Meta Campaigns */}
+          <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+            <div className="px-6 py-4 border-b border-slate-200">
+              <h2 className="text-base font-semibold text-slate-900">Meta Campaigns</h2>
+            </div>
+            {metaCampaignsLoading ? (
+              <div className="p-8">
+                <LoadingSpinner size="md" />
+              </div>
+            ) : metaCampaigns.length === 0 ? (
+              <div className="p-8 text-center">
+                <p className="text-sm text-slate-400">No Meta campaigns yet</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-slate-50 border-b border-slate-200">
+                      <th className="text-left px-4 py-3 font-medium text-slate-600">Name</th>
+                      <th className="text-left px-4 py-3 font-medium text-slate-600">Status</th>
+                      <th className="text-left px-4 py-3 font-medium text-slate-600">Properties</th>
+                      <th className="text-left px-4 py-3 font-medium text-slate-600">Budget/day</th>
+                      <th className="text-left px-4 py-3 font-medium text-slate-600">Reach</th>
+                      <th className="text-left px-4 py-3 font-medium text-slate-600">Impressions</th>
+                      <th className="text-left px-4 py-3 font-medium text-slate-600">Clicks</th>
+                      <th className="text-left px-4 py-3 font-medium text-slate-600">Leads</th>
+                      <th className="text-left px-4 py-3 font-medium text-slate-600">Launched</th>
+                      <th className="text-left px-4 py-3 font-medium text-slate-600">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {metaCampaigns.map((c) => (
+                      <tr key={c.id} className="hover:bg-slate-50">
+                        <td className="px-4 py-3 font-medium text-slate-900 max-w-[180px] truncate">
+                          {c.campaign_name}
+                        </td>
+                        <td className="px-4 py-3">
+                          <MetaStatusBadge status={c.status} />
+                        </td>
+                        <td className="px-4 py-3 text-slate-700">{c.property_count || 0}</td>
+                        <td className="px-4 py-3 text-slate-700">
+                          ${((c.daily_budget || 0) / 100).toFixed(2)}
+                        </td>
+                        <td className="px-4 py-3 text-slate-700">{c.reach ?? '--'}</td>
+                        <td className="px-4 py-3 text-slate-700">{c.impressions ?? '--'}</td>
+                        <td className="px-4 py-3 text-slate-700">{c.clicks ?? '--'}</td>
+                        <td className="px-4 py-3 text-slate-700">{c.leads ?? '--'}</td>
+                        <td className="px-4 py-3 text-slate-600 text-xs">
+                          {c.created_at ? new Date(c.created_at).toLocaleDateString() : '--'}
+                        </td>
+                        <td className="px-4 py-3">
+                          <button
+                            onClick={() => handleToggleCampaign(c)}
+                            disabled={togglingCampaign === c.id}
+                            className={`inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-lg transition-colors ${
+                              c.status === 'ACTIVE'
+                                ? 'bg-yellow-50 text-yellow-700 hover:bg-yellow-100'
+                                : 'bg-green-50 text-green-700 hover:bg-green-100'
+                            } disabled:opacity-50`}
+                          >
+                            {c.status === 'ACTIVE' ? (
+                              <>
+                                <Pause className="w-3 h-3" /> Pause
+                              </>
+                            ) : (
+                              <>
+                                <Play className="w-3 h-3" /> Activate
+                              </>
+                            )}
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
         </div>
       </div>
+
+      {/* Launch Meta Campaign Modal */}
+      {showLaunchModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-xl shadow-xl border border-slate-200 w-full max-w-md mx-4 p-6 space-y-5">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-slate-900">Launch Meta Campaign</h3>
+              <button
+                onClick={() => setShowLaunchModal(false)}
+                className="text-slate-400 hover:text-slate-600"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div className="bg-violet-50 rounded-lg p-3">
+                <p className="text-sm font-medium text-violet-800">
+                  Audience size: <span className="font-bold">{previewCount}</span> properties
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">
+                  Daily Budget ($)
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  step="1"
+                  value={launchBudget}
+                  onChange={(e) => setLaunchBudget(Number(e.target.value))}
+                  className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">
+                  Duration (days)
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  step="1"
+                  value={launchDuration}
+                  onChange={(e) => setLaunchDuration(Number(e.target.value))}
+                  className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">
+                  Ad Template
+                </label>
+                <select
+                  value={launchTemplate}
+                  onChange={(e) => setLaunchTemplate(Number(e.target.value))}
+                  className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-500"
+                >
+                  {AD_TEMPLATES.map((t) => (
+                    <option key={t.index} value={t.index}>
+                      {t.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="flex gap-3 pt-2">
+              <button
+                onClick={handleLaunchMeta}
+                disabled={launching}
+                className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-violet-600 hover:bg-violet-700 disabled:bg-violet-300 text-white text-sm font-medium rounded-lg transition-colors"
+              >
+                <Rocket className="w-4 h-4" />
+                {launching ? 'Launching...' : 'Launch Campaign'}
+              </button>
+              <button
+                onClick={() => setShowLaunchModal(false)}
+                disabled={launching}
+                className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-medium rounded-lg transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </Layout>
   );
 }

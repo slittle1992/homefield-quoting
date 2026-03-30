@@ -16,6 +16,7 @@ const metaRoutes = require('./routes/meta');
 const webhookRoutes = require('./routes/webhooks');
 const ghlRoutes = require('./routes/ghl');
 const permitRoutes = require('./routes/permits');
+const integrationsRoutes = require('./routes/integrations');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -44,6 +45,7 @@ app.use('/api/meta', metaRoutes);
 app.use('/api/webhooks', webhookRoutes);
 app.use('/api/ghl', ghlRoutes);
 app.use('/api/permits', permitRoutes);
+app.use('/api/integrations', integrationsRoutes);
 
 // Debug endpoint to check property/drop state
 app.get('/api/debug', authenticate, async (req, res) => {

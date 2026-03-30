@@ -328,4 +328,69 @@ router.get('/templates', authenticate, requireRole('admin'), (req, res) => {
   res.json({ templates: metaService.getAdTemplates() });
 });
 
+// GET /api/meta/status - check if Meta is configured
+router.get('/status', authenticate, requireRole('admin'), async (req, res) => {
+  try {
+    const result = await pool.query(
+      "SELECT config, updated_at FROM integrations WHERE provider = 'meta'"
+    );
+
+    if (result.rows.length === 0) {
+      return res.json({ configured: false });
+    }
+
+    const config = typeof result.rows[0].config === 'string'
+      ? JSON.parse(result.rows[0].config)
+      : result.rows[0].config;
+
+    res.json({
+      configured: true,
+      has_access_token: !!config.access_token,
+      has_ad_account: !!config.ad_account_id,
+      updated_at: result.rows[0].updated_at,
+    });
+  } catch (err) {
+    console.error('Meta status check error:', err);
+    res.status(500).json({ error: 'Failed to check Meta status' });
+  }
+});
+
+// POST /api/meta/connect - save Meta credentials to integrations table
+router.post('/connect', authenticate, requireRole('admin'), async (req, res) => {
+  try {
+    const { access_token, ad_account_id, page_id } = req.body;
+
+    if (!access_token || !ad_account_id) {
+      return res.status(400).json({ error: 'Access token and ad account ID are required' });
+    }
+
+    const config = JSON.stringify({
+      access_token,
+      ad_account_id,
+      page_id: page_id || '',
+    });
+
+    const existing = await pool.query(
+      "SELECT id FROM integrations WHERE provider = 'meta'"
+    );
+
+    if (existing.rows.length > 0) {
+      await pool.query(
+        "UPDATE integrations SET config = $1, updated_at = NOW() WHERE provider = 'meta'",
+        [config]
+      );
+    } else {
+      await pool.query(
+        "INSERT INTO integrations (provider, config, created_at, updated_at) VALUES ('meta', $1, NOW(), NOW())",
+        [config]
+      );
+    }
+
+    res.json({ message: 'Meta credentials saved', configured: true });
+  } catch (err) {
+    console.error('Meta connect error:', err);
+    res.status(500).json({ error: 'Failed to save Meta credentials' });
+  }
+});
+
 module.exports = router;
