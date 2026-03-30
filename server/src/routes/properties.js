@@ -43,20 +43,40 @@ router.get('/stats', authenticate, async (req, res) => {
 // GET /api/properties/map - return properties within bounding box for map pins
 router.get('/map', authenticate, async (req, res) => {
   try {
-    const { sw_lat, sw_lng, ne_lat, ne_lng } = req.query;
+    const { sw_lat, sw_lng, ne_lat, ne_lng, lead_source, campaign_status, subdivision } = req.query;
 
-    if (!sw_lat || !sw_lng || !ne_lat || !ne_lng) {
-      return res.status(400).json({ error: 'Bounding box parameters required: sw_lat, sw_lng, ne_lat, ne_lng' });
-    }
-
-    const result = await pool.query(`
+    let query = `
       SELECT id, latitude, longitude, campaign_status, campaign_drops_completed,
              campaign_total_drops, lead_source, do_not_drop
       FROM properties
-      WHERE latitude IS NOT NULL AND longitude IS NOT NULL
-        AND latitude BETWEEN $1 AND $2
-        AND longitude BETWEEN $3 AND $4
-    `, [sw_lat, ne_lat, sw_lng, ne_lng]);
+      WHERE latitude IS NOT NULL AND longitude IS NOT NULL`;
+    const params = [];
+    let paramIndex = 1;
+
+    if (sw_lat && sw_lng && ne_lat && ne_lng) {
+      query += ` AND latitude BETWEEN $${paramIndex} AND $${paramIndex + 1} AND longitude BETWEEN $${paramIndex + 2} AND $${paramIndex + 3}`;
+      params.push(sw_lat, ne_lat, sw_lng, ne_lng);
+      paramIndex += 4;
+    }
+
+    if (lead_source) {
+      query += ` AND lead_source = $${paramIndex++}`;
+      params.push(lead_source);
+    }
+
+    if (campaign_status) {
+      query += ` AND campaign_status = $${paramIndex++}`;
+      params.push(campaign_status);
+    }
+
+    if (subdivision) {
+      query += ` AND subdivision ILIKE $${paramIndex++}`;
+      params.push(`%${subdivision}%`);
+    }
+
+    query += ' LIMIT 5000';
+
+    const result = await pool.query(query, params);
 
     res.json({ properties: result.rows });
   } catch (err) {
@@ -459,6 +479,20 @@ router.post('/:id/convert', authenticate, async (req, res) => {
     });
   } catch (err) {
     console.error('Convert property error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/properties/:id/deliveries - get delivery history for a property
+router.get('/:id/deliveries', authenticate, async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT * FROM drop_queue WHERE property_id = $1 ORDER BY scheduled_date DESC`,
+      [req.params.id]
+    );
+    res.json({ deliveries: result.rows });
+  } catch (err) {
+    console.error('Get deliveries error:', err);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

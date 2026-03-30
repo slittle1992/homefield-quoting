@@ -319,4 +319,38 @@ router.post('/:id/skip', authenticate, async (req, res) => {
   }
 });
 
+// Alias: POST /generate-route -> same logic as /generate
+router.post('/generate-route', authenticate, requireRole('admin'), (req, res) => {
+  req.url = '/generate';
+  router.handle(req, res, () => res.status(404).json({ error: 'Not found' }));
+});
+
+// POST /queue/:propertyId - manually queue a drop for a property
+router.post('/queue/:propertyId', authenticate, requireRole('admin'), async (req, res) => {
+  try {
+    const { propertyId } = req.params;
+    const today = new Date().toISOString().split('T')[0];
+
+    const prop = await pool.query('SELECT * FROM properties WHERE id = $1', [propertyId]);
+    if (prop.rows.length === 0) {
+      return res.status(404).json({ error: 'Property not found' });
+    }
+
+    const property = prop.rows[0];
+    const dropNumber = (property.campaign_drops_completed || 0) + 1;
+
+    const result = await pool.query(`
+      INSERT INTO drop_queue (property_id, drop_number, scheduled_date, status)
+      VALUES ($1, $2, $3, 'queued')
+      ON CONFLICT DO NOTHING
+      RETURNING *
+    `, [propertyId, dropNumber, today]);
+
+    res.json({ drop: result.rows[0] || null });
+  } catch (err) {
+    console.error('Queue drop error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 module.exports = router;
