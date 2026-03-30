@@ -25,13 +25,22 @@ async function seed() {
     console.log('Mailer schedule seeded.');
 
     // Create default admin user
-    const passwordHash = await bcrypt.hash('admin123', 10);
+    const adminHash = await bcrypt.hash('admin123', 10);
     await client.query(`
       INSERT INTO users (name, email, password_hash, role)
       VALUES ('Admin', 'admin@pooldrop.com', $1, 'admin')
       ON CONFLICT (email) DO UPDATE SET password_hash = EXCLUDED.password_hash
-    `, [passwordHash]);
+    `, [adminHash]);
     console.log('Default admin user seeded (admin@pooldrop.com / admin123).');
+
+    // Create default driver user
+    const driverHash = await bcrypt.hash('driver123', 10);
+    await client.query(`
+      INSERT INTO users (name, email, password_hash, role)
+      VALUES ('Driver', 'driver@pooldrop.com', $1, 'driver')
+      ON CONFLICT (email) DO UPDATE SET password_hash = EXCLUDED.password_hash
+    `, [driverHash]);
+    console.log('Default driver user seeded (driver@pooldrop.com / driver123).');
 
     console.log('Seeding completed successfully.');
   } catch (err) {
