@@ -12,6 +12,9 @@ const importRoutes = require('./routes/import');
 const driversRoutes = require('./routes/drivers');
 const campaignsRoutes = require('./routes/campaigns');
 const exportRoutes = require('./routes/export');
+const metaRoutes = require('./routes/meta');
+const webhookRoutes = require('./routes/webhooks');
+const ghlRoutes = require('./routes/ghl');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -36,6 +39,9 @@ app.use('/api/import', importRoutes);
 app.use('/api/drivers', driversRoutes);
 app.use('/api/campaigns', campaignsRoutes);
 app.use('/api/export', exportRoutes);
+app.use('/api/meta', metaRoutes);
+app.use('/api/webhooks', webhookRoutes);
+app.use('/api/ghl', ghlRoutes);
 
 // Debug endpoint to check property/drop state
 app.get('/api/debug', authenticate, async (req, res) => {
