@@ -5,12 +5,17 @@ const { scheduleNextDrop } = require('../services/campaignService');
 
 const router = express.Router();
 
-// GET /api/drops/today - get today's drop queue
+// GET /api/drops/today - get today's and upcoming drop queue
 router.get('/today', authenticate, async (req, res) => {
   try {
-    const today = new Date().toISOString().split('T')[0];
+    const { days } = req.query;
+    const lookAheadDays = parseInt(days) || 7;
+    const endDate = new Date();
+    endDate.setDate(endDate.getDate() + lookAheadDays);
+    const endDateStr = endDate.toISOString().split('T')[0];
+
     const conditions = [`dq.scheduled_date <= $1`, `dq.status IN ('queued', 'assigned')`];
-    const params = [today];
+    const params = [endDateStr];
 
     // If driver role, only show their assigned drops
     if (req.user.role === 'driver') {
@@ -27,7 +32,7 @@ router.get('/today', authenticate, async (req, res) => {
       FROM drop_queue dq
       JOIN properties p ON p.id = dq.property_id
       WHERE ${conditions.join(' AND ')}
-      ORDER BY dq.priority DESC, dq.id ASC
+      ORDER BY dq.scheduled_date ASC, dq.priority DESC, dq.id ASC
     `, params);
 
     res.json({ drops: result.rows });
@@ -157,14 +162,15 @@ router.post('/generate', authenticate, requireRole('admin'), async (req, res) =>
     const result = await pool.query(`
       SELECT p.id, p.lead_source, p.campaign_drops_completed, p.campaign_total_drops
       FROM properties p
-      WHERE p.campaign_next_drop_date <= $1
+      WHERE (p.campaign_next_drop_date IS NULL OR p.campaign_next_drop_date <= $1)
         AND p.campaign_status IN ('not_started', 'flyer_in_progress')
         AND p.do_not_drop = false
+        AND p.campaign_drops_completed < p.campaign_total_drops
         AND NOT EXISTS (
           SELECT 1 FROM drop_queue dq
           WHERE dq.property_id = p.id AND dq.status IN ('queued', 'assigned')
         )
-      ORDER BY p.campaign_next_drop_date ASC
+      ORDER BY p.campaign_next_drop_date ASC NULLS FIRST
     `, [today]);
 
     // Assign priorities

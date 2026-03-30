@@ -122,7 +122,7 @@ export default function DriverDashboard() {
       <div className="bg-white border-b border-slate-200 px-4 py-5">
         <div className="flex items-end justify-between mb-3">
           <div>
-            <p className="text-sm text-slate-500">Today's Progress</p>
+            <p className="text-sm text-slate-500">Drops Available</p>
             <p className="text-3xl font-bold text-slate-900">
               {deliveredCount}{' '}
               <span className="text-lg font-normal text-slate-400">/ {totalCount}</span>
