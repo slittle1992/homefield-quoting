@@ -341,7 +341,7 @@ export default function AdminDashboard() {
 
   return (
     <Layout>
-      <div className="flex-1 flex overflow-hidden relative">
+      <div className="flex-1 flex overflow-hidden relative" style={{ minHeight: 'calc(100vh - 3.5rem)' }}>
         <Sidebar
           collapsed={sidebarCollapsed}
           onToggle={() => setSidebarCollapsed(!sidebarCollapsed)}
@@ -353,7 +353,7 @@ export default function AdminDashboard() {
         />
 
         <div className="flex-1 relative">
-          <div ref={mapContainerRef} className="absolute inset-0" />
+          <div ref={mapContainerRef} className="absolute inset-0" style={{ minHeight: '500px' }} />
 
           <div className="absolute top-3 right-3 flex flex-col gap-2 z-10">
             <button
