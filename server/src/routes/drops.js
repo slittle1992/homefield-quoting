@@ -5,6 +5,47 @@ const { scheduleNextDrop } = require('../services/campaignService');
 
 const router = express.Router();
 
+// Haversine distance in meters between two lat/lng points
+function haversineDistance(lat1, lng1, lat2, lng2) {
+  const R = 6371000;
+  const toRad = (d) => (d * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+// Nearest-neighbor route optimization
+function optimizeRoute(drops) {
+  if (drops.length <= 1) return drops;
+
+  const remaining = [...drops];
+  const optimized = [remaining.shift()]; // start with first drop
+
+  while (remaining.length > 0) {
+    const last = optimized[optimized.length - 1];
+    let nearestIdx = 0;
+    let nearestDist = Infinity;
+
+    for (let i = 0; i < remaining.length; i++) {
+      const dist = haversineDistance(
+        last.latitude, last.longitude,
+        remaining[i].latitude, remaining[i].longitude
+      );
+      if (dist < nearestDist) {
+        nearestDist = dist;
+        nearestIdx = i;
+      }
+    }
+
+    optimized.push(remaining.splice(nearestIdx, 1)[0]);
+  }
+
+  return optimized;
+}
+
 // GET /api/drops/today - get today's and upcoming drop queue
 router.get('/today', authenticate, async (req, res) => {
   try {
@@ -35,7 +76,12 @@ router.get('/today', authenticate, async (req, res) => {
       ORDER BY dq.scheduled_date ASC, dq.priority DESC, dq.id ASC
     `, params);
 
-    res.json({ drops: result.rows });
+    // Optimize route order by nearest-neighbor for shortest driving path
+    const dropsWithCoords = result.rows.filter(d => d.latitude && d.longitude);
+    const dropsWithoutCoords = result.rows.filter(d => !d.latitude || !d.longitude);
+    const optimized = optimizeRoute(dropsWithCoords);
+
+    res.json({ drops: [...optimized, ...dropsWithoutCoords] });
   } catch (err) {
     console.error('Get today drops error:', err);
     res.status(500).json({ error: 'Internal server error' });
