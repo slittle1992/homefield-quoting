@@ -1,0 +1,23 @@
+{
+  "turf": {
+    "rollWidthFeet": 15,
+    "wasteFactor": 0.10,
+    "unit": "sqft"
+  },
+  "infill": {
+    "lbsPerSqft": 2.5,
+    "unit": "lbs"
+  },
+  "seamTape": {
+    "widthInches": 6,
+    "unit": "linearFeet"
+  },
+  "adhesive": {
+    "sqftPerGallon": 200,
+    "unit": "gallons"
+  },
+  "stakes": {
+    "spacingFeet": 1,
+    "unit": "count"
+  }
+}

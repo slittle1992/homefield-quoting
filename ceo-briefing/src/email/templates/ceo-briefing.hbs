@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CEO Briefing — {{date}}</title>
+</head>
+<body style="margin:0;padding:0;background:#f4f4f7;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f7;">
+<tr><td align="center" style="padding:20px 10px;">
+<table width="100%" cellpadding="0" cellspacing="0" style="max-width:680px;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.08);">
+
+<!-- Header -->
+<tr><td style="background:#1e4d3a;padding:24px 30px;">
+  <h1 style="margin:0;color:#f2eacc;font-size:22px;font-weight:700;">Good Morning — CEO Briefing</h1>
+  <p style="margin:6px 0 0;color:#a8c5a0;font-size:14px;">{{date}}</p>
+</td></tr>
+
+<!-- Section 1: Critical Alerts -->
+{{#if alerts.length}}
+<tr><td style="padding:0 30px;">
+  <div style="background:#fef2f2;border-left:4px solid #ef4444;padding:16px 20px;margin:20px 0;border-radius:0 8px 8px 0;">
+    <h3 style="margin:0 0 8px;color:#dc2626;font-size:15px;">🔴 Critical Alerts</h3>
+    {{#each alerts}}
+    <p style="margin:4px 0;color:#7f1d1d;font-size:13px;">• {{this.message}} <span style="color:#999;font-size:11px;">({{this.business}})</span></p>
+    {{/each}}
+  </div>
+</td></tr>
+{{/if}}
+
+<!-- Section 2: Cash Position -->
+<tr><td style="padding:20px 30px 10px;">
+  <h2 style="margin:0 0 16px;color:#1e4d3a;font-size:17px;border-bottom:2px solid #e5e7eb;padding-bottom:8px;">💰 Cash Position</h2>
+  <table width="100%" cellpadding="0" cellspacing="0">
+    <tr>
+      <td width="48%" style="vertical-align:top;">
+        <div style="background:#f0fdf4;border-radius:8px;padding:16px;">
+          <p style="margin:0;font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:0.5px;">Homefield Turf</p>
+          <p style="margin:4px 0;font-size:24px;font-weight:700;color:#1e4d3a;">{{currency mercury.homefield.currentBalance}}</p>
+          <p style="margin:4px 0;font-size:12px;">
+            <span style="color:#22c55e;">↑ {{currency mercury.homefield.yesterdayInflows}}</span> &nbsp;
+            <span style="color:#ef4444;">↓ {{currency mercury.homefield.yesterdayOutflows}}</span>
+          </p>
+        </div>
+      </td>
+      <td width="4%"></td>
+      <td width="48%" style="vertical-align:top;">
+        <div style="background:#eff6ff;border-radius:8px;padding:16px;">
+          <p style="margin:0;font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:0.5px;">Second Pool Care</p>
+          <p style="margin:4px 0;font-size:24px;font-weight:700;color:#1e40af;">{{currency mercury.secondPoolCare.currentBalance}}</p>
+          <p style="margin:4px 0;font-size:12px;">
+            <span style="color:#22c55e;">↑ {{currency mercury.secondPoolCare.yesterdayInflows}}</span> &nbsp;
+            <span style="color:#ef4444;">↓ {{currency mercury.secondPoolCare.yesterdayOutflows}}</span>
+          </p>
+        </div>
+      </td>
+    </tr>
+  </table>
+</td></tr>
+
+<!-- Section 3: 12-Week Cash Flow -->
+<tr><td style="padding:10px 30px;">
+  <h3 style="margin:0 0 10px;color:#374151;font-size:14px;">12-Week Cash Flow History</h3>
+  <table width="100%" cellpadding="6" cellspacing="0" style="font-size:11px;border-collapse:collapse;">
+    <tr style="background:#f9fafb;">
+      <th style="text-align:left;padding:6px 8px;color:#6b7280;border-bottom:1px solid #e5e7eb;">Week</th>
+      <th style="text-align:right;padding:6px 8px;color:#6b7280;border-bottom:1px solid #e5e7eb;">In</th>
+      <th style="text-align:right;padding:6px 8px;color:#6b7280;border-bottom:1px solid #e5e7eb;">Out</th>
+      <th style="text-align:right;padding:6px 8px;color:#6b7280;border-bottom:1px solid #e5e7eb;">Net</th>
+    </tr>
+    {{#each mercury.homefield.weeklyHistory}}
+    <tr style="background:{{#if (gt netCash 0)}}#f0fdf4{{else}}#fef2f2{{/if}};">
+      <td style="padding:5px 8px;border-bottom:1px solid #f3f4f6;">{{shortDate weekStart}}</td>
+      <td style="text-align:right;padding:5px 8px;border-bottom:1px solid #f3f4f6;color:#22c55e;">{{currency inflows}}</td>
+      <td style="text-align:right;padding:5px 8px;border-bottom:1px solid #f3f4f6;color:#ef4444;">{{currency outflows}}</td>
+      <td style="text-align:right;padding:5px 8px;border-bottom:1px solid #f3f4f6;font-weight:600;color:{{cashColor netCash}};">{{currency netCash}}</td>
+    </tr>
+    {{/each}}
+  </table>
+
+  {{#if mercury.homefield.projectedWeeks.length}}
+  <h3 style="margin:16px 0 8px;color:#374151;font-size:14px;">📈 4-Week Projection (Homefield)</h3>
+  <table width="100%" cellpadding="6" cellspacing="0" style="font-size:11px;border-collapse:collapse;">
+    <tr style="background:#fdf6e3;">
+      <th style="text-align:left;padding:6px 8px;color:#92400e;border-bottom:1px solid #e5e7eb;">Week</th>
+      <th style="text-align:right;padding:6px 8px;color:#92400e;border-bottom:1px solid #e5e7eb;">Expected In</th>
+      <th style="text-align:right;padding:6px 8px;color:#92400e;border-bottom:1px solid #e5e7eb;">Expected Out</th>
+      <th style="text-align:right;padding:6px 8px;color:#92400e;border-bottom:1px solid #e5e7eb;">Projected Balance</th>
+    </tr>
+    {{#each mercury.homefield.projectedWeeks}}
+    <tr>
+      <td style="padding:5px 8px;border-bottom:1px solid #f3f4f6;">{{shortDate weekStart}}</td>
+      <td style="text-align:right;padding:5px 8px;border-bottom:1px solid #f3f4f6;color:#22c55e;">{{currency expectedInflows}}</td>
+      <td style="text-align:right;padding:5px 8px;border-bottom:1px solid #f3f4f6;color:#ef4444;">{{currency expectedOutflows}}</td>
+      <td style="text-align:right;padding:5px 8px;border-bottom:1px solid #f3f4f6;font-weight:700;">{{currency projectedBalance}}</td>
+    </tr>
+    {{/each}}
+  </table>
+  {{/if}}
+</td></tr>
+
+<!-- Section 4: Homefield Turf — Sales & Pipeline -->
+<tr><td style="padding:20px 30px 10px;">
+  <h2 style="margin:0 0 16px;color:#1e4d3a;font-size:17px;border-bottom:2px solid #e5e7eb;padding-bottom:8px;">🏠 Homefield Turf</h2>
+
+  <!-- Sales Metrics Row -->
+  <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:16px;">
+    <tr>
+      <td width="25%" style="text-align:center;padding:10px;background:#f9fafb;border-radius:6px;">
+        <p style="margin:0;font-size:20px;font-weight:700;color:#1e4d3a;">{{currency builderPrime.salesMetrics.pipelineValue}}</p>
+        <p style="margin:2px 0 0;font-size:10px;color:#6b7280;">Pipeline Value</p>
+      </td>
+      <td width="25%" style="text-align:center;padding:10px;background:#f9fafb;border-radius:6px;">
+        <p style="margin:0;font-size:20px;font-weight:700;color:#1e4d3a;">{{builderPrime.salesMetrics.leadsThisWeek}}</p>
+        <p style="margin:2px 0 0;font-size:10px;color:#6b7280;">Leads This Week</p>
+      </td>
+      <td width="25%" style="text-align:center;padding:10px;background:#f9fafb;border-radius:6px;">
+        <p style="margin:0;font-size:20px;font-weight:700;color:#1e4d3a;">{{builderPrime.salesMetrics.proposalsSent}}</p>
+        <p style="margin:2px 0 0;font-size:10px;color:#6b7280;">Active Proposals</p>
+      </td>
+      <td width="25%" style="text-align:center;padding:10px;background:#f9fafb;border-radius:6px;">
+        <p style="margin:0;font-size:20px;font-weight:700;color:#22c55e;">{{builderPrime.salesMetrics.jobsSold}}</p>
+        <p style="margin:2px 0 0;font-size:10px;color:#6b7280;">Jobs Sold</p>
+      </td>
+    </tr>
+  </table>
+
+  <!-- Today's Appointments -->
+  {{#if builderPrime.todayAppointments.length}}
+  <h3 style="margin:0 0 8px;color:#374151;font-size:14px;">Today's Appointments</h3>
+  <table width="100%" cellpadding="6" cellspacing="0" style="font-size:12px;border-collapse:collapse;margin-bottom:16px;">
+    {{#each builderPrime.todayAppointments}}
+    <tr style="border-bottom:1px solid #f3f4f6;">
+      <td style="padding:6px 8px;font-weight:600;width:80px;">{{time}}</td>
+      <td style="padding:6px 8px;">{{customerName}}</td>
+      <td style="padding:6px 8px;color:#6b7280;">{{type}}</td>
+      <td style="padding:6px 8px;color:#6b7280;font-size:11px;">{{address}}</td>
+    </tr>
+    {{/each}}
+  </table>
+  {{/if}}
+
+  <!-- New Leads -->
+  {{#if builderPrime.newLeads.length}}
+  <h3 style="margin:0 0 8px;color:#374151;font-size:14px;">🆕 New Leads (Last 24h)</h3>
+  <ul style="margin:0 0 16px;padding-left:20px;font-size:12px;">
+    {{#each builderPrime.newLeads}}
+    <li style="margin:4px 0;"><strong>{{name}}</strong> — via {{source}} — {{contactInfo}}</li>
+    {{/each}}
+  </ul>
+  {{/if}}
+
+  <!-- Active Proposals -->
+  {{#if builderPrime.activeProposals.length}}
+  <h3 style="margin:0 0 8px;color:#374151;font-size:14px;">📋 Active Proposals</h3>
+  <table width="100%" cellpadding="6" cellspacing="0" style="font-size:12px;border-collapse:collapse;margin-bottom:16px;">
+    {{#each builderPrime.activeProposals}}
+    <tr style="border-bottom:1px solid #f3f4f6;">
+      <td style="padding:6px 8px;">{{customerName}}</td>
+      <td style="padding:6px 8px;font-weight:600;">{{currency amount}}</td>
+      <td style="padding:6px 8px;color:#6b7280;font-size:11px;">Sent {{shortDate dateSent}}</td>
+      <td style="padding:6px 8px;font-size:11px;">Follow-up: {{shortDate followUpDue}}</td>
+    </tr>
+    {{/each}}
+  </table>
+  {{/if}}
+
+  <!-- Newly Sold Jobs -->
+  {{#if builderPrime.newlySoldJobs.length}}
+  <div style="background:#f0fdf4;border-radius:8px;padding:16px;margin-bottom:16px;">
+    <h3 style="margin:0 0 8px;color:#166534;font-size:14px;">🎉 Newly Sold Jobs!</h3>
+    {{#each builderPrime.newlySoldJobs}}
+    <p style="margin:4px 0;font-size:13px;"><strong>{{customerName}}</strong> — {{currency amount}} — {{address}}</p>
+    <p style="margin:0 0 8px;font-size:11px;color:#6b7280;">{{scope}}</p>
+    {{/each}}
+  </div>
+  {{/if}}
+
+  <!-- Production Pipeline -->
+  {{#if builderPrime.productionPipeline.length}}
+  <h3 style="margin:0 0 8px;color:#374151;font-size:14px;">🔧 Production Pipeline</h3>
+  <table width="100%" cellpadding="6" cellspacing="0" style="font-size:12px;border-collapse:collapse;margin-bottom:16px;">
+    {{#each builderPrime.productionPipeline}}
+    <tr style="border-bottom:1px solid #f3f4f6;">
+      <td style="padding:6px 8px;">{{customerName}}</td>
+      <td style="padding:6px 8px;"><span style="background:#dbeafe;color:#1e40af;padding:2px 8px;border-radius:10px;font-size:10px;">{{status}}</span></td>
+      <td style="padding:6px 8px;color:#6b7280;font-size:11px;">{{shortDate scheduledDate}}</td>
+      <td style="padding:6px 8px;color:#6b7280;">{{assignedTo}}</td>
+    </tr>
+    {{/each}}
+  </table>
+  {{/if}}
+</td></tr>
+
+<!-- Section 5: Second Pool Care -->
+<tr><td style="padding:20px 30px 10px;">
+  <h2 style="margin:0 0 16px;color:#1e40af;font-size:17px;border-bottom:2px solid #e5e7eb;padding-bottom:8px;">🏊 Second Pool Care</h2>
+
+  <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:16px;">
+    <tr>
+      <td width="33%" style="text-align:center;padding:10px;background:#eff6ff;border-radius:6px;">
+        <p style="margin:0;font-size:20px;font-weight:700;color:#1e40af;">{{len poolBrain.todayRoutes}}</p>
+        <p style="margin:2px 0 0;font-size:10px;color:#6b7280;">Today's Stops</p>
+      </td>
+      <td width="33%" style="text-align:center;padding:10px;background:#eff6ff;border-radius:6px;">
+        <p style="margin:0;font-size:20px;font-weight:700;color:{{#if (lt poolBrain.completionRate 90)}}#ef4444{{else}}#22c55e{{/if}};">{{percent poolBrain.completionRate}}</p>
+        <p style="margin:2px 0 0;font-size:10px;color:#6b7280;">Yesterday Completion</p>
+      </td>
+      <td width="33%" style="text-align:center;padding:10px;background:#eff6ff;border-radius:6px;">
+        <p style="margin:0;font-size:20px;font-weight:700;color:{{#if poolBrain.overdueServices.length}}#ef4444{{else}}#22c55e{{/if}};">{{len poolBrain.overdueServices}}</p>
+        <p style="margin:2px 0 0;font-size:10px;color:#6b7280;">Overdue</p>
+      </td>
+    </tr>
+  </table>
+
+  {{#if poolBrain.customerAlerts.length}}
+  <h3 style="margin:0 0 8px;color:#374151;font-size:14px;">⚠️ Customer Alerts</h3>
+  <ul style="margin:0 0 16px;padding-left:20px;font-size:12px;">
+    {{#each poolBrain.customerAlerts}}
+    <li style="margin:4px 0;"><strong>{{customerName}}</strong>: {{issue}}</li>
+    {{/each}}
+  </ul>
+  {{/if}}
+
+  {{#if invoicing.secondPoolCare}}
+  <h3 style="margin:0 0 8px;color:#374151;font-size:14px;">💵 Invoicing</h3>
+  <p style="font-size:12px;margin:4px 0;">This month collected: <strong>{{currency invoicing.secondPoolCare.thisMonthCollected}}</strong></p>
+  <p style="font-size:12px;margin:4px 0;">Last month collected: <strong>{{currency invoicing.secondPoolCare.lastMonthCollected}}</strong></p>
+  <p style="font-size:12px;margin:4px 0;">Trend: <span style="color:{{statusColor invoicing.secondPoolCare.collectionTrend}};">{{invoicing.secondPoolCare.collectionTrend}}</span></p>
+  {{/if}}
+</td></tr>
+
+<!-- Section 6: Payroll -->
+<tr><td style="padding:20px 30px 10px;">
+  <h2 style="margin:0 0 16px;color:#374151;font-size:17px;border-bottom:2px solid #e5e7eb;padding-bottom:8px;">📊 Payroll</h2>
+  {{#if gusto.nextPayroll}}
+  <p style="font-size:13px;margin:4px 0;">Next payroll: <strong>{{date gusto.nextPayroll.date}}</strong> — est. <strong>{{currency gusto.nextPayroll.estimatedTotal}}</strong> ({{gusto.nextPayroll.employeeCount}} employees)</p>
+  {{/if}}
+  {{#if gusto.lastPayroll}}
+  <p style="font-size:13px;margin:4px 0;">Last payroll: {{date gusto.lastPayroll.date}} — <strong>{{currency gusto.lastPayroll.total}}</strong></p>
+  {{/if}}
+  <p style="font-size:13px;margin:4px 0;">YTD payroll total: <strong>{{currency gusto.ytdTotal}}</strong></p>
+
+  {{#if payroll.alerts.length}}
+  <div style="background:#fef3c7;border-left:4px solid #f59e0b;padding:12px 16px;margin:12px 0;border-radius:0 6px 6px 0;">
+    {{#each payroll.alerts}}
+    <p style="margin:4px 0;font-size:12px;color:#92400e;">{{statusEmoji type}} {{message}}</p>
+    {{/each}}
+  </div>
+  {{/if}}
+</td></tr>
+
+<!-- Section 7: Marketing / Flyers -->
+<tr><td style="padding:20px 30px 10px;">
+  <h2 style="margin:0 0 16px;color:#374151;font-size:17px;border-bottom:2px solid #e5e7eb;padding-bottom:8px;">📬 Marketing — Flyer Tracking</h2>
+  <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:12px;">
+    <tr>
+      <td width="33%" style="text-align:center;padding:10px;background:#fdf4ff;border-radius:6px;">
+        <p style="margin:0;font-size:20px;font-weight:700;color:#7c3aed;">{{flyers.yesterday.count}}</p>
+        <p style="margin:2px 0 0;font-size:10px;color:#6b7280;">Yesterday</p>
+      </td>
+      <td width="33%" style="text-align:center;padding:10px;background:#fdf4ff;border-radius:6px;">
+        <p style="margin:0;font-size:20px;font-weight:700;color:#7c3aed;">{{flyers.thisWeek.count}}</p>
+        <p style="margin:2px 0 0;font-size:10px;color:#6b7280;">This Week</p>
+      </td>
+      <td width="33%" style="text-align:center;padding:10px;background:#fdf4ff;border-radius:6px;">
+        <p style="margin:0;font-size:20px;font-weight:700;color:#7c3aed;">{{flyers.thisMonth.count}}</p>
+        <p style="margin:2px 0 0;font-size:10px;color:#6b7280;">This Month</p>
+      </td>
+    </tr>
+  </table>
+
+  {{#if flyers.conversionTracking}}
+  <p style="font-size:12px;margin:4px 0;">Conversion rate: <strong>{{percent flyers.conversionTracking.estimatedConversionRate}}</strong> ({{flyers.conversionTracking.leadsFromFlyeredAreas}} leads from {{flyers.conversionTracking.flyeredNeighborhoods}} flyered properties)</p>
+  {{/if}}
+
+  {{#if flyers.topNeighborhoods.length}}
+  <h3 style="margin:12px 0 8px;color:#374151;font-size:13px;">Top Neighborhoods</h3>
+  <table width="100%" cellpadding="5" cellspacing="0" style="font-size:11px;border-collapse:collapse;">
+    {{#each flyers.topNeighborhoods}}
+    <tr style="border-bottom:1px solid #f3f4f6;">
+      <td style="padding:4px 8px;">{{name}}</td>
+      <td style="padding:4px 8px;text-align:right;">{{flyersDropped}} flyers</td>
+      <td style="padding:4px 8px;text-align:right;font-weight:600;color:{{#if leadsGenerated}}#22c55e{{else}}#9ca3af{{/if}};">{{leadsGenerated}} leads</td>
+    </tr>
+    {{/each}}
+  </table>
+  {{/if}}
+</td></tr>
+
+<!-- Section 8: AI Insights -->
+<tr><td style="padding:20px 30px 10px;">
+  <h2 style="margin:0 0 16px;color:#374151;font-size:17px;border-bottom:2px solid #e5e7eb;padding-bottom:8px;">🤖 AI Analysis & Recommendations</h2>
+  <div style="font-size:13px;line-height:1.6;">
+    {{{aiInsights}}}
+  </div>
+</td></tr>
+
+<!-- Section 9: Draft Supplier Orders -->
+{{#if orderDrafts.length}}
+<tr><td style="padding:20px 30px 10px;">
+  <h2 style="margin:0 0 16px;color:#374151;font-size:17px;border-bottom:2px solid #e5e7eb;padding-bottom:8px;">📦 Draft Supplier Orders</h2>
+  {{#each orderDrafts}}
+  <div style="background:#fffbeb;border:1px solid #fcd34d;border-radius:8px;padding:16px;margin-bottom:16px;">
+    <p style="margin:0 0 4px;font-size:10px;text-transform:uppercase;color:#b45309;font-weight:700;">⚠️ DRAFT — Review Before Sending</p>
+    <p style="margin:0 0 8px;font-size:14px;font-weight:600;">{{subject}}</p>
+    <p style="margin:0 0 4px;font-size:12px;color:#6b7280;">To: {{to}}</p>
+    <pre style="background:#fefce8;padding:12px;border-radius:6px;font-size:11px;white-space:pre-wrap;font-family:monospace;margin:8px 0;">{{body}}</pre>
+  </div>
+  {{/each}}
+</td></tr>
+{{/if}}
+
+<!-- Section 10: Action Items -->
+{{#if actionItems.length}}
+<tr><td style="padding:20px 30px 10px;">
+  <h2 style="margin:0 0 16px;color:#374151;font-size:17px;border-bottom:2px solid #e5e7eb;padding-bottom:8px;">✅ Action Items</h2>
+  <ul style="margin:0;padding-left:20px;font-size:13px;">
+    {{#each actionItems}}
+    <li style="margin:6px 0;">{{this}}</li>
+    {{/each}}
+  </ul>
+</td></tr>
+{{/if}}
+
+<!-- Footer -->
+<tr><td style="padding:20px 30px;background:#f9fafb;border-top:1px solid #e5e7eb;">
+  <p style="margin:0;font-size:11px;color:#9ca3af;text-align:center;">
+    Generated at {{timestamp}} | Data sources: Mercury, Builder Prime, Gusto, Pool Brain, PoolDrop
+  </p>
+</td></tr>
+
+</table>
+</td></tr>
+</table>
+</body>
+</html>

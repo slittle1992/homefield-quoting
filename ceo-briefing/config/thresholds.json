@@ -1,0 +1,25 @@
+{
+  "cashFlow": {
+    "homefield": {
+      "criticalLow": 5000,
+      "warningLow": 15000,
+      "healthyMinimum": 25000
+    },
+    "secondPoolCare": {
+      "criticalLow": 2000,
+      "warningLow": 5000,
+      "healthyMinimum": 10000
+    }
+  },
+  "invoicing": {
+    "overdueWarningDays": 14,
+    "overdueCriticalDays": 30
+  },
+  "sales": {
+    "staleProposalDays": 7,
+    "followUpReminderDays": 3
+  },
+  "payroll": {
+    "prePayrollAlertDays": 2
+  }
+}

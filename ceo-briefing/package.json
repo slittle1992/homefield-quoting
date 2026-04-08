@@ -1,0 +1,24 @@
+{
+  "name": "ceo-morning-briefing",
+  "version": "1.0.0",
+  "description": "Automated CEO Morning Briefing system for Homefield Turf and Second Pool Care",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "test": "node src/index.js --test --now",
+    "now": "node src/index.js --now"
+  },
+  "keywords": [],
+  "license": "UNLICENSED",
+  "private": true,
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.85.0",
+    "axios": "^1.14.0",
+    "dayjs": "^1.11.20",
+    "dotenv": "^17.4.1",
+    "googleapis": "^171.4.0",
+    "handlebars": "^4.7.9",
+    "node-cron": "^4.2.1",
+    "pg": "^8.20.0"
+  }
+}

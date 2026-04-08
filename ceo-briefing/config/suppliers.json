@@ -1,0 +1,18 @@
+{
+  "primary": {
+    "name": "",
+    "email": "",
+    "phone": "",
+    "accountNumber": "",
+    "typicalLeadTimeDays": 5,
+    "products": ["turf", "infill", "seamTape", "adhesive"]
+  },
+  "secondary": {
+    "name": "",
+    "email": "",
+    "phone": "",
+    "accountNumber": "",
+    "typicalLeadTimeDays": 7,
+    "products": ["turf", "infill"]
+  }
+}
