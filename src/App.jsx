@@ -35,17 +35,16 @@ function Pats({render}){const pre=render?"r":"";return(<defs>
 const SK="hf-quotes";
 export default function App(){
   const ref=useRef(null),rRef=useRef(null);
-  const[yard,setYard]=useState(null);const[yd,setYd]=useState([]);const[dY,setDY]=useState(true);
+  const[yard,setYard]=useState(null);
   const[zones,setZones]=useState([]);const[greens,setGreens]=useState([]);
   const[pvs,setPvs]=useState([]);const[fps,setFps]=useState([]);
   const[selPv,setSelPv]=useState(null);const[selFp,setSelFp]=useState(null);
+  // dPts/dMode only used now for wall tap-to-place flow
   const[dPts,setDPts]=useState([]);const[dMode,setDMode]=useState(null);
   const[actS,setActS]=useState("standard");const[sel,setSel]=useState(null);
   const[drag,setDrag]=useState(null);const[hov,setHov]=useState(null);
-  const[tool,setTool]=useState("poly");const[cDrag,setCDrag]=useState(null);
   const[eDrag,setEDrag]=useState(null);const[rDrag,setRDrag]=useState(null);
   const[placing,setPlacing]=useState(null);
-  const[straight,setStraight]=useState(false);// constrain drawing to H/V
   const[gridLvl,setGridLvl]=useState(1);// 0=off,1=subtle,2=strong
   const[pvMode,setPvMode]=useState("single");// "single"|"walkway"|"patio"
   const[pvCfg,setPvCfg]=useState({spacing:2,count:10,cols:3,rows:3,gap:1});
@@ -54,9 +53,11 @@ export default function App(){
   const[rep,setRep]=useState("");const[cust,setCust]=useState("");const[addr,setAddr]=useState("");const[notes,setNotes]=useState("");
   const[vers,setVers]=useState([]);const[aVer,setAVer]=useState(null);const[showV,setShowV]=useState(false);
   const[sMsg,setSMsg]=useState(null);const[sName,setSName]=useState("");const[showSave,setShowSave]=useState(false);
-  // Quick Layout Builder
+  // Yard Builder (form-first flow)
   const[showLayout,setShowLayout]=useState(false);
-  const[layoutData,setLayoutData]=useState({width:'',length:'',cutouts:[],sections:[]});
+  const[layoutData,setLayoutData]=useState({width:'',length:'',material:'standard',cutouts:[],sideYards:[],subZones:[]});
+  // Newly-generated shapes get a brief pulsing outline so the rep knows to drag them
+  const[justGenerated,setJustGenerated]=useState(null);// {zones:Set, greens:Set, expireAt}
   // Undo/Redo
   const[history,setHistory]=useState([]);const[histIdx,setHistIdx]=useState(-1);const[histLock,setHistLock]=useState(false);
   // Retaining walls
@@ -67,7 +68,7 @@ export default function App(){
   useEffect(()=>{(async()=>{try{const r=(() => { try { const v = localStorage.getItem(SK); return v ? {value: v} : null; } catch(e) { return null; } })();if(r&&r.value)setVers(JSON.parse(r.value));}catch(e){}})();},[]);
   const pV=async v=>{try{(() => { try { localStorage.setItem(SK, JSON.stringify(v)); return true; } catch(e) { return false; } })();return true;}catch(e){return false;}};
   const gS=()=>({yard,zones,greens,pvs,fps,walls,rep,cust,addr,notes});
-  const lS=s=>{setYard(s.yard||null);setZones(s.zones||[]);setGreens(s.greens||[]);setPvs(s.pvs||s.pavers||[]);setFps(s.fps||s.firePits||[]);setWalls(s.walls||[]);setRep(s.rep||"");setCust(s.cust||"");setAddr(s.addr||"");setNotes(s.notes||"");setDY(!s.yard);setDPts([]);setDMode(null);setSel(null);setSelPv(null);setSelFp(null);setPlacing(null);setStraight(false);setPvStart(null);setPvMode("single");};
+  const lS=s=>{setYard(s.yard||null);setZones(s.zones||[]);setGreens(s.greens||[]);setPvs(s.pvs||s.pavers||[]);setFps(s.fps||s.firePits||[]);setWalls(s.walls||[]);setRep(s.rep||"");setCust(s.cust||"");setAddr(s.addr||"");setNotes(s.notes||"");setDPts([]);setDMode(null);setSel(null);setSelPv(null);setSelFp(null);setPlacing(null);setPvStart(null);setPvMode("single");if(!s.yard)setShowLayout(true);};
   const doSave=async nm=>{const v={id:Date.now(),name:nm||`v${vers.length+1}`,date:new Date().toISOString(),state:gS()};const nv=[v,...vers];if(await pV(nv)){setVers(nv);setAVer(v.id);setSMsg("✓ Saved");}else setSMsg("⚠ Failed");setShowSave(false);setSName("");setTimeout(()=>setSMsg(null),2000);};
   const loadV=id=>{const v=vers.find(x=>x.id===id);if(v){lS(v.state);setAVer(id);setView("edit");setShowV(false);}};
   const delV=async id=>{const nv=vers.filter(x=>x.id!==id);setVers(nv);if(aVer===id)setAVer(null);await pV(nv);};
@@ -78,8 +79,11 @@ export default function App(){
   const redo=useCallback(()=>{if(histIdx>=history.length-1)return;const s=JSON.parse(history[histIdx+1]);setHistLock(true);setYard(s.yard);setZones(s.zones);setGreens(s.greens);setPvs(s.pvs);setFps(s.fps);setWalls(s.walls||[]);setHistIdx(histIdx+1);setTimeout(()=>setHistLock(false),50);},[history,histIdx]);
   // Auto-snapshot on meaningful changes
   useEffect(()=>{if(!histLock&&yard)snapState();},[yard,zones.length,greens.length,pvs.length,fps.length,walls.length]);
+  // Open Yard Builder on cold start when no yard exists
+  useEffect(()=>{if(!yard&&!showLayout)setShowLayout(true);},[]);// eslint-disable-line
 
-  // --- Quick Layout Builder ---
+  // --- Yard Builder (form-first) ---
+  // Parent-section lookup: main yard or "side-<idx>" → center + bounding rect
   const generateLayout=useCallback(()=>{
     const w=parseFloat(layoutData.width),l=parseFloat(layoutData.length);
     if(!w||!l||w<=0||l<=0)return;
@@ -95,30 +99,68 @@ export default function App(){
     if(cutMap['top-right']){const c=cutMap['top-right'];verts.push({x:sx+wp-c.w,y:sy},{x:sx+wp-c.w,y:sy+c.h},{x:sx+wp,y:sy+c.h});}else verts.push(corners.tr);
     if(cutMap['bottom-right']){const c=cutMap['bottom-right'];verts.push({x:sx+wp,y:sy+lp-c.h},{x:sx+wp-c.w,y:sy+lp-c.h},{x:sx+wp-c.w,y:sy+lp});}else verts.push(corners.br);
     if(cutMap['bottom-left']){const c=cutMap['bottom-left'];verts.push({x:sx+c.w,y:sy+lp},{x:sx+c.w,y:sy+lp-c.h},{x:sx,y:sy+lp-c.h});}else verts.push(corners.bl);
-    // Snap all vertices
     const snapped=verts.map(v=>sn(v.x,v.y));
-    setYard({v:snapped});setDY(false);
-    // Create a zone covering the yard
-    setZones(prev=>{
-      const newZones=[...prev,{type:'poly',pts:[...snapped],s:actS}];
-      // Add extra sections as separate zones offset to the right
-      layoutData.sections.forEach((sec,i)=>{
-        const sw=parseFloat(sec.w),sh=parseFloat(sec.h);
-        if(!sw||!sh)return;
-        const ox=sx+wp+f2p(5),oy=sy+i*(f2p(sh)+f2p(3));
-        const pts=[sn(ox,oy),sn(ox+f2p(sw),oy),sn(ox+f2p(sw),oy+f2p(sh)),sn(ox,oy+f2p(sh))];
-        newZones.push({type:'poly',pts,s:actS,label:sec.label||`Section ${i+1}`});
-      });
-      return newZones;
+    setYard({v:snapped});
+    // Track parent section bounds so sub-zones can position relative to them
+    const parents={};
+    parents['main']={cx:sx+wp/2,cy:sy+lp/2,pts:snapped};
+    // Build new zones + greens arrays
+    const newZones=[];const newGreens=[];const genZoneIdx=new Set();const genGreenIdx=new Set();
+    const pushShape=(material,shapeObj,parent,label)=>{
+      if(material==='putting'){
+        const g={...shapeObj};if(label)g.label=label;
+        genGreenIdx.add(newGreens.length);newGreens.push(g);
+      }else{
+        const z={...shapeObj,s:material};if(label)z.label=label;
+        genZoneIdx.add(newZones.length);newZones.push(z);
+      }
+    };
+    // 1) Main yard base zone (one polygon matching the yard shape)
+    pushShape(layoutData.material||actS,{type:'poly',pts:[...snapped]},'main','Main Yard');
+    // 2) Side yards — stack to the right of the main yard, user drags into place
+    layoutData.sideYards.forEach((sec,i)=>{
+      const sw=parseFloat(sec.w),sl=parseFloat(sec.l);
+      if(!sw||!sl)return;
+      const ox=sx+wp+f2p(6+i*2),oy=sy+i*(f2p(sl)+f2p(3));
+      const pts=[sn(ox,oy),sn(ox+f2p(sw),oy),sn(ox+f2p(sw),oy+f2p(sl)),sn(ox,oy+f2p(sl))];
+      pushShape(sec.material||layoutData.material||actS,{type:'poly',pts},`side-${i}`,sec.label||`Side Yard ${i+1}`);
+      parents[`side-${i}`]={cx:ox+f2p(sw)/2,cy:oy+f2p(sl)/2,pts};
     });
-    setShowLayout(false);setLayoutData({width:'',length:'',cutouts:[],sections:[]});
+    // 3) Sub-zones — place at parent center, offset slightly so stacks are visible
+    layoutData.subZones.forEach((sz,i)=>{
+      const parent=parents[sz.parent||'main']||parents['main'];
+      const offX=f2p((i%4)*1.5),offY=f2p(Math.floor(i/4)*1.5);
+      const cx=parent.cx+offX,cy=parent.cy+offY;
+      const mat=sz.material||layoutData.material||actS;
+      if(sz.shape==='circle'){
+        const r=parseFloat(sz.radius);if(!r||r<=0)return;
+        pushShape(mat,{type:'circle',cx:sn(cx,cy).x,cy:sn(cx,cy).y,r:f2p(r)},sz.parent,sz.label);
+      }else{
+        const sw=parseFloat(sz.w),sl=parseFloat(sz.l);if(!sw||!sl)return;
+        const hw=f2p(sw)/2,hl=f2p(sl)/2;
+        const pts=[sn(cx-hw,cy-hl),sn(cx+hw,cy-hl),sn(cx+hw,cy+hl),sn(cx-hw,cy+hl)];
+        pushShape(mat,{type:'poly',pts},sz.parent,sz.label);
+      }
+    });
+    setZones(prev=>[...prev,...newZones]);
+    setGreens(prev=>[...prev,...newGreens]);
+    // Mark the just-generated shapes for the pulsing outline
+    const baseZoneLen=zones.length,baseGreenLen=greens.length;
+    setJustGenerated({zones:new Set(Array.from(genZoneIdx).map(i=>i+baseZoneLen)),greens:new Set(Array.from(genGreenIdx).map(i=>i+baseGreenLen)),expireAt:Date.now()+6000});
+    setShowLayout(false);
     setDPts([]);setDMode(null);clr();
-  },[layoutData,actS]);
+  },[layoutData,actS,zones.length,greens.length]);
+  // Clear justGenerated after 6 seconds
+  useEffect(()=>{
+    if(!justGenerated)return;
+    const t=setTimeout(()=>setJustGenerated(null),6100);
+    return()=>clearTimeout(t);
+  },[justGenerated]);
 
   // --- Wall helpers ---
   const wallLen=useCallback(w=>{let d=0;for(let i=0;i<w.pts.length-1;i++)d+=Math.hypot(w.pts[i+1].x-w.pts[i].x,w.pts[i+1].y-w.pts[i].y);return p2f(d);},[]);
 
-  const allPts=useMemo(()=>{const pts=[];yd.forEach(p=>pts.push(p));if(yard)yard.v.forEach(p=>pts.push(p));zones.forEach(z=>{if(z.type==='circle'){pts.push({x:z.cx-z.r,y:z.cy-z.r},{x:z.cx+z.r,y:z.cy+z.r});}else z.pts.forEach(p=>{pts.push(p);if(p.cx!==undefined)pts.push({x:p.cx,y:p.cy});});});greens.forEach(g=>{if(g.type==='circle'){pts.push({x:g.cx-g.r,y:g.cy-g.r},{x:g.cx+g.r,y:g.cy+g.r});}else g.pts.forEach(p=>{pts.push(p);if(p.cx!==undefined)pts.push({x:p.cx,y:p.cy});});});pvs.forEach(p=>pts.push(p));fps.forEach(p=>{pts.push({x:p.x-FPR_PX,y:p.y-FPR_PX},{x:p.x+FPR_PX,y:p.y+FPR_PX});});walls.forEach(w=>w.pts.forEach(p=>pts.push(p)));dPts.forEach(p=>pts.push(p));if(hov)pts.push(hov);if(cDrag){pts.push({x:cDrag.cx,y:cDrag.cy});if(hov?.r)pts.push({x:cDrag.cx+hov.r,y:cDrag.cy+hov.r},{x:cDrag.cx-hov.r,y:cDrag.cy-hov.r});}return pts;},[yd,yard,zones,greens,pvs,fps,walls,dPts,hov,cDrag]);
+  const allPts=useMemo(()=>{const pts=[];if(yard)yard.v.forEach(p=>pts.push(p));zones.forEach(z=>{if(z.type==='circle'){pts.push({x:z.cx-z.r,y:z.cy-z.r},{x:z.cx+z.r,y:z.cy+z.r});}else z.pts.forEach(p=>{pts.push(p);if(p.cx!==undefined)pts.push({x:p.cx,y:p.cy});});});greens.forEach(g=>{if(g.type==='circle'){pts.push({x:g.cx-g.r,y:g.cy-g.r},{x:g.cx+g.r,y:g.cy+g.r});}else g.pts.forEach(p=>{pts.push(p);if(p.cx!==undefined)pts.push({x:p.cx,y:p.cy});});});pvs.forEach(p=>pts.push(p));fps.forEach(p=>{pts.push({x:p.x-FPR_PX,y:p.y-FPR_PX},{x:p.x+FPR_PX,y:p.y+FPR_PX});});walls.forEach(w=>w.pts.forEach(p=>pts.push(p)));dPts.forEach(p=>pts.push(p));if(hov)pts.push(hov);return pts;},[yard,zones,greens,pvs,fps,walls,dPts,hov]);
   const vb=useMemo(()=>{let wf=DEF_W_FT,hf=DEF_H_FT;if(allPts.length){let mx=0,my=0;allPts.forEach(p=>{if(p.x>mx)mx=p.x;if(p.y>my)my=p.y;});const nw=p2f(mx)+PAD_FT,nh=p2f(my)+PAD_FT;if(nw>wf)wf=Math.ceil(nw/10)*10;if(nh>hf)hf=Math.ceil(nh/10)*10;}return{w:f2p(wf),h:f2p(hf),wf,hf};},[allPts]);
   const CW=vb.w,CH=vb.h;
 
@@ -128,23 +170,56 @@ export default function App(){
     try{const ctm=svg.getScreenCTM();if(ctm){const inv=ctm.inverse();const svgP=pt.matrixTransform(inv);return{x:svgP.x,y:svgP.y};}}catch(ex){}
     // Fallback
     return{x:(cx-r.left)*(CW/r.width),y:(cy-r.top)*(CH/r.height)};},[CW,CH]);
-  const lDim=useCallback(()=>{if(!hov)return null;const pts=dY?yd:dPts;if(!pts.length)return null;const last=pts[pts.length-1],d=p2f(Math.hypot(hov.x-last.x,hov.y-last.y));if(d<0.5)return null;return{x:(last.x+hov.x)/2,y:(last.y+hov.y)/2,d};},[hov,dY,yd,dPts]);
   const clr=()=>{setSel(null);setSelPv(null);setSelFp(null);};
 
-  const hDown=useCallback((e,t,pl)=>{e.stopPropagation();if(e.cancelable)e.preventDefault();if(t==='paver'){setEDrag({t:'paver',i:pl.i});setSelPv(pl.i);setSel(null);setSelFp(null);}else if(t==='fp'){setEDrag({t:'fp',i:pl.i});setSelFp(pl.i);setSel(null);setSelPv(null);}else if(t==='rot'){setRDrag(pl.i);setSelPv(pl.i);}else if(t==='zmove'){if(dY||dMode)return;const raw=gXY(e);setDrag({t:'zmove',layer:pl.layer,idx:pl.idx,sx:raw.x,sy:raw.y,oPts:pl.layer==='zone'?zones[pl.idx]?.pts?.map(p=>({...p})):greens[pl.idx]?.pts?.map(p=>({...p}))});setSel({type:pl.layer,idx:pl.idx});setSelPv(null);setSelFp(null);}else if(t==='v'){if(dY||dMode)return;setDrag(pl);if(pl.layer)setSel({type:pl.layer,idx:pl.idx});}},[dY,dMode,gXY,zones,greens]);
-  const lastTap=useRef({time:0,x:0,y:0});const rectStart=useRef(null);
-  const closeShape=useCallback(()=>{if(dY&&yd.length>=4){setYard({v:yd});setYd([]);setDY(false);}else if(dMode&&dPts.length>=4){if(dMode==='zone'){setZones(p=>[...p,{pts:dPts,s:actS,type:tool==="curve"?"curve":"poly"}]);setSel({type:'zone',idx:zones.length});}else if(dMode==='green'){setGreens(p=>[...p,{pts:dPts,type:tool==="curve"?"curve":"poly"}]);setSel({type:'green',idx:greens.length});}else if(dMode==='wall'){setWalls(p=>[...p,{pts:dPts,height:24,side:'left'}]);setShowWallH(true);}setDPts([]);setDMode(null);}},[dY,yd,dMode,dPts,actS,zones.length,greens.length,tool]);
-  const hClick=useCallback(e=>{if(drag||eDrag||rDrag!==null)return;const raw=gXY(e);let s=sn(raw.x,raw.y);if(straight){const pts=dY?yd:dPts;if(pts.length>0){const last=pts[pts.length-1],dx=Math.abs(s.x-last.x),dy=Math.abs(s.y-last.y);if(dx>dy)s={x:s.x,y:last.y};else s={x:last.x,y:s.y};}}
-  // Double-tap to close
-  const now=Date.now(),lt=lastTap.current;const isDblTap=(now-lt.time<400)&&Math.hypot(s.x-lt.x,s.y-lt.y)<20;lastTap.current={time:now,x:s.x,y:s.y};
-  if(isDblTap){const pts=dY?yd:dPts;if(pts.length>=4){if(dY){setYard({v:yd});setYd([]);setDY(false);}else if(dMode==='wall'){setWalls(p=>[...p,{pts:dPts,height:24,side:'left'}]);setShowWallH(true);setDPts([]);setDMode(null);}else if(dMode){if(dMode==='zone'){setZones(p=>[...p,{pts:dPts,s:actS,type:tool==="curve"?"curve":"poly"}]);setSel({type:'zone',idx:zones.length});}else{setGreens(p=>[...p,{pts:dPts,type:tool==="curve"?"curve":"poly"}]);setSel({type:'green',idx:greens.length});}setDPts([]);setDMode(null);}return;}}
-  // Rectangle tool
-  if(dMode&&tool==="rect"){if(!rectStart.current){rectStart.current=s;}else{const r=rectStart.current,x1=Math.min(r.x,s.x),y1=Math.min(r.y,s.y),x2=Math.max(r.x,s.x),y2=Math.max(r.y,s.y);const pts=[{x:x1,y:y1},{x:x2,y:y1},{x:x2,y:y2},{x:x1,y:y2}];if(dMode==='zone'){setZones(p=>[...p,{pts,s:actS,type:'poly'}]);setSel({type:'zone',idx:zones.length});}else if(dMode==='green'){setGreens(p=>[...p,{pts,type:'poly'}]);setSel({type:'green',idx:greens.length});}rectStart.current=null;setDPts([]);setDMode(null);}return;}
-  if(placing==='paver'){if(pvMode==='walkway'){if(!pvStart){setPvStart(s);setPvs(p=>[...p,{x:s.x,y:s.y,rot:0}]);return;}const dx=s.x-pvStart.x,dy=s.y-pvStart.y,dist=Math.hypot(dx,dy);if(dist<1){setPvStart(null);return;}const ux=dx/dist,uy=dy/dist,rot=Math.round(Math.atan2(uy,ux)*180/Math.PI/5)*5,stepPx=f2p(pvCfg.spacing);const newPvs=[];for(let i=1;i<pvCfg.count;i++){newPvs.push({x:pvStart.x+ux*stepPx*i,y:pvStart.y+uy*stepPx*i,rot});}setPvs(p=>[...p,...newPvs]);setPvStart(null);return;}if(pvMode==='patio'){const gapPx=f2p(pvCfg.gap+PW),newPvs=[];for(let r=0;r<pvCfg.rows;r++)for(let c=0;c<pvCfg.cols;c++)newPvs.push({x:s.x+c*gapPx,y:s.y+r*gapPx,rot:0});setPvs(p=>[...p,...newPvs]);return;}setPvs(p=>[...p,{x:s.x,y:s.y,rot:0}]);return;}if(placing==='fp'){setFps(p=>[...p,{x:s.x,y:s.y}]);return;}if(placing==='wall'){setDPts(p=>[...p,{x:s.x,y:s.y}]);return;}if(dMode&&tool==="circle"){if(!cDrag)setCDrag({cx:s.x,cy:s.y});return;}if(dY){if(yd.length>=4&&Math.hypot(s.x-yd[0].x,s.y-yd[0].y)<20){setYard({v:yd});setYd([]);setDY(false);return;}setYd(p=>[...p,s]);return;}if(dMode){if(dPts.length>=4&&Math.hypot(s.x-dPts[0].x,s.y-dPts[0].y)<20){if(dMode==='zone'){setZones(p=>[...p,{pts:dPts,s:actS,type:tool==="curve"?"curve":"poly"}]);setSel({type:'zone',idx:zones.length});}else{setGreens(p=>[...p,{pts:dPts,type:tool==="curve"?"curve":"poly"}]);setSel({type:'green',idx:greens.length});}setDPts([]);setDMode(null);return;}if(tool==="curve"&&dPts.length>0){const prev=dPts[dPts.length-1];setDPts(p=>[...p,{x:s.x,y:s.y,cx:(prev.x+s.x)/2,cy:(prev.y+s.y)/2}]);}else setDPts(p=>[...p,{x:s.x,y:s.y}]);return;}clr();},[drag,eDrag,rDrag,gXY,dY,yd,dMode,dPts,actS,zones.length,greens.length,tool,cDrag,placing,straight,pvMode,pvCfg,pvStart]);
-  const hMove=useCallback(e=>{if(e.cancelable)e.preventDefault();const raw=gXY(e),s=sn(raw.x,raw.y);if(rDrag!==null){const st=pvs[rDrag];if(st){const a=Math.atan2(raw.y-st.y,raw.x-st.x)*180/Math.PI;setPvs(p=>{const u=[...p];u[rDrag]={...u[rDrag],rot:Math.round(a/5)*5};return u;});}return;}if(eDrag){if(eDrag.t==='paver')setPvs(p=>{const u=[...p];u[eDrag.i]={...u[eDrag.i],x:s.x,y:s.y};return u;});else setFps(p=>{const u=[...p];u[eDrag.i]={...u[eDrag.i],x:s.x,y:s.y};return u;});return;}if(cDrag&&dMode&&tool==="circle"){setHov({x:raw.x,y:raw.y,r:Math.hypot(raw.x-cDrag.cx,raw.y-cDrag.cy)});return;}if(drag){if(drag.t==='zmove'&&drag.oPts){const dx=raw.x-drag.sx,dy=raw.y-drag.sy;const newPts=drag.oPts.map(p=>sn(p.x+dx,p.y+dy));(drag.layer==='green'?setGreens:setZones)(prev=>{const u=[...prev];u[drag.idx]={...u[drag.idx],pts:newPts};return u;});}else if(drag.t==='y'&&yard){const nv=[...yard.v];nv[drag.i]=s;setYard({v:nv});}else if(drag.t==='z'&&drag.layer==='wall'){setWalls(p=>{const u=[...p];const vv=[...u[drag.idx].pts];vv[drag.i]={...vv[drag.i],x:s.x,y:s.y};u[drag.idx]={...u[drag.idx],pts:vv};return u;});}else if(drag.t==='z'){(drag.layer==='green'?setGreens:setZones)(p=>{const u=[...p];if(u[drag.idx].type==='circle')u[drag.idx]={...u[drag.idx],cx:s.x,cy:s.y};else{const vv=[...u[drag.idx].pts];vv[drag.i]={...vv[drag.i],x:s.x,y:s.y};u[drag.idx]={...u[drag.idx],pts:vv};}return u;});}else if(drag.t==='cp'){(drag.layer==='green'?setGreens:setZones)(p=>{const u=[...p];const vv=[...u[drag.idx].pts];vv[drag.i]={...vv[drag.i],cx:s.x,cy:s.y};u[drag.idx]={...u[drag.idx],pts:vv};return u;});}}else if(dY||dMode){let h=tool==="circle"?{x:raw.x,y:raw.y}:s;if(straight&&tool!=="circle"){const pts=dY?yd:dPts;if(pts.length>0){const last=pts[pts.length-1],dx=Math.abs(h.x-last.x),dy=Math.abs(h.y-last.y);if(dx>dy)h={x:h.x,y:last.y};else h={x:last.x,y:h.y};}}setHov(h);}else if(placing)setHov(s);},[drag,eDrag,rDrag,gXY,dY,dMode,yard,tool,cDrag,pvs,straight,yd,dPts,placing]);
-  const hUp=useCallback(()=>{if(cDrag&&hov?.r>8){if(dMode==='zone'){setZones(p=>[...p,{type:'circle',s:actS,cx:cDrag.cx,cy:cDrag.cy,r:hov.r}]);setSel({type:'zone',idx:zones.length});}else if(dMode==='green'){setGreens(p=>[...p,{type:'circle',cx:cDrag.cx,cy:cDrag.cy,r:hov.r}]);setSel({type:'green',idx:greens.length});}setCDrag(null);setHov(null);setDMode(null);return;}setEDrag(null);setRDrag(null);setDrag(null);},[cDrag,hov,dMode,actS,zones.length,greens.length]);
+  // hDown: paver drag, fire pit drag, paver rotation, whole-shape move, vertex drag
+  const hDown=useCallback((e,t,pl)=>{e.stopPropagation();if(e.cancelable)e.preventDefault();if(t==='paver'){setEDrag({t:'paver',i:pl.i});setSelPv(pl.i);setSel(null);setSelFp(null);}else if(t==='fp'){setEDrag({t:'fp',i:pl.i});setSelFp(pl.i);setSel(null);setSelPv(null);}else if(t==='rot'){setRDrag(pl.i);setSelPv(pl.i);}else if(t==='zmove'){if(dMode)return;const raw=gXY(e);const src=pl.layer==='zone'?zones[pl.idx]:greens[pl.idx];if(!src||src.type==='circle')return;setDrag({t:'zmove',layer:pl.layer,idx:pl.idx,sx:raw.x,sy:raw.y,oPts:src.pts.map(p=>({...p}))});setSel({type:pl.layer,idx:pl.idx});setSelPv(null);setSelFp(null);}else if(t==='v'){if(dMode)return;setDrag(pl);if(pl.layer)setSel({type:pl.layer,idx:pl.idx});}},[dMode,gXY,zones,greens]);
 
-  const isD=dY||!!dMode;const cur=dY?yd:dPts;
+  // hClick: only used now for tap-to-place (pavers, fire pits, walls)
+  const hClick=useCallback(e=>{if(drag||eDrag||rDrag!==null)return;const raw=gXY(e);const s=sn(raw.x,raw.y);
+    if(placing==='paver'){
+      if(pvMode==='walkway'){
+        if(!pvStart){setPvStart(s);setPvs(p=>[...p,{x:s.x,y:s.y,rot:0}]);return;}
+        const dx=s.x-pvStart.x,dy=s.y-pvStart.y,dist=Math.hypot(dx,dy);
+        if(dist<1){setPvStart(null);return;}
+        const ux=dx/dist,uy=dy/dist,rot=Math.round(Math.atan2(uy,ux)*180/Math.PI/5)*5,stepPx=f2p(pvCfg.spacing);
+        const newPvs=[];for(let i=1;i<pvCfg.count;i++){newPvs.push({x:pvStart.x+ux*stepPx*i,y:pvStart.y+uy*stepPx*i,rot});}
+        setPvs(p=>[...p,...newPvs]);setPvStart(null);return;
+      }
+      if(pvMode==='patio'){
+        const gapPx=f2p(pvCfg.gap+PW),newPvs=[];
+        for(let r=0;r<pvCfg.rows;r++)for(let c=0;c<pvCfg.cols;c++)newPvs.push({x:s.x+c*gapPx,y:s.y+r*gapPx,rot:0});
+        setPvs(p=>[...p,...newPvs]);return;
+      }
+      setPvs(p=>[...p,{x:s.x,y:s.y,rot:0}]);return;
+    }
+    if(placing==='fp'){setFps(p=>[...p,{x:s.x,y:s.y}]);return;}
+    if(dMode==='wall'){setDPts(p=>[...p,{x:s.x,y:s.y}]);return;}
+    clr();
+  },[drag,eDrag,rDrag,gXY,dMode,placing,pvMode,pvCfg,pvStart]);
+
+  const hMove=useCallback(e=>{if(e.cancelable)e.preventDefault();const raw=gXY(e),s=sn(raw.x,raw.y);
+    if(rDrag!==null){const st=pvs[rDrag];if(st){const a=Math.atan2(raw.y-st.y,raw.x-st.x)*180/Math.PI;setPvs(p=>{const u=[...p];u[rDrag]={...u[rDrag],rot:Math.round(a/5)*5};return u;});}return;}
+    if(eDrag){if(eDrag.t==='paver')setPvs(p=>{const u=[...p];u[eDrag.i]={...u[eDrag.i],x:s.x,y:s.y};return u;});else setFps(p=>{const u=[...p];u[eDrag.i]={...u[eDrag.i],x:s.x,y:s.y};return u;});return;}
+    if(drag){
+      if(drag.t==='zmove'&&drag.oPts){
+        const dx=raw.x-drag.sx,dy=raw.y-drag.sy;
+        const newPts=drag.oPts.map(p=>sn(p.x+dx,p.y+dy));
+        (drag.layer==='green'?setGreens:setZones)(prev=>{const u=[...prev];u[drag.idx]={...u[drag.idx],pts:newPts};return u;});
+      }else if(drag.t==='z'&&drag.layer==='wall'){
+        setWalls(p=>{const u=[...p];const vv=[...u[drag.idx].pts];vv[drag.i]={...vv[drag.i],x:s.x,y:s.y};u[drag.idx]={...u[drag.idx],pts:vv};return u;});
+      }else if(drag.t==='z'){
+        (drag.layer==='green'?setGreens:setZones)(p=>{const u=[...p];if(u[drag.idx].type==='circle')u[drag.idx]={...u[drag.idx],cx:s.x,cy:s.y};else{const vv=[...u[drag.idx].pts];vv[drag.i]={...vv[drag.i],x:s.x,y:s.y};u[drag.idx]={...u[drag.idx],pts:vv};}return u;});
+      }
+      return;
+    }
+    if(placing||dMode==='wall')setHov(s);
+  },[drag,eDrag,rDrag,gXY,dMode,pvs,placing]);
+  const hUp=useCallback(()=>{setEDrag(null);setRDrag(null);setDrag(null);},[]);
+
+  // isD retained for legacy JSX checks — only wall drawing counts now
+  const isD=dMode==='wall';
+  const cur=dPts;
   const ySF=yard?p2s(pA(yard.v)):0;const tGSF=greens.reduce((s,g)=>s+zA(g),0);const tBSF=zones.reduce((s,z)=>s+zA(z),0);
   const bI=zones.map(z=>{const raw=zA(z),prop=tBSF>0?raw/tBSF:0,gs=tGSF*prop,net=Math.max(0,raw-gs),s=BS.find(x=>x.id===z.s);return{name:s?.name,rawSF:raw,netSF:net,price:s?.price||0,mat:net*(s?.price||0),lab:net*LAB,color:s?.color};});
   const gI={sf:tGSF,mat:tGSF*PUT.price,lab:tGSF*LAB};
@@ -153,7 +228,7 @@ export default function App(){
   const matT=bI.reduce((s,l)=>s+l.mat,0)+(tGSF>0?gI.mat:0);
   const labT=bI.reduce((s,l)=>s+l.lab,0)+(tGSF>0?gI.lab:0);
   const sub=matT+labT+pvT+fpTot+wallTot,tax=sub*TAX,grand=sub+tax;
-  const ld=lDim();const selZ=sel?.type==='zone'?zones[sel.idx]:null;const selG=sel?.type==='green'?greens[sel.idx]:null;
+  const selZ=sel?.type==='zone'?zones[sel.idx]:null;const selG=sel?.type==='green'?greens[sel.idx]:null;
   const gSt=vb.wf>100?f2p(5):f2p(1);const mE=vb.wf>100?2:5;
   const hasC=zones.length>0||greens.length>0||walls.length>0;
 
@@ -164,14 +239,14 @@ export default function App(){
     if(yard)yard.v.forEach(p=>refPts.push(p));
     zones.forEach(z=>{if(z.type==='circle')refPts.push({x:z.cx,y:z.cy});else z.pts.forEach(p=>refPts.push(p));});
     greens.forEach(g=>{if(g.type==='circle')refPts.push({x:g.cx,y:g.cy});else g.pts.forEach(p=>refPts.push(p));});
-    const cur=dY?yd:dPts;cur.forEach(p=>refPts.push(p));
+    dPts.forEach(p=>refPts.push(p));
     const THRESH=SNAP_PX*1.5,hLines=[],vLines=[];
     refPts.forEach(p=>{
       if(Math.abs(t.x-p.x)<THRESH&&Math.abs(t.y-p.y)>THRESH)vLines.push(p.x);
       if(Math.abs(t.y-p.y)<THRESH&&Math.abs(t.x-p.x)>THRESH)hLines.push(p.y);
     });
     return{hLines:[...new Set(hLines)],vLines:[...new Set(vLines)]};
-  },[hov,drag,yard,zones,greens,dY,yd,dPts]);
+  },[hov,drag,yard,zones,greens,dPts]);
 
   // Paver spacing: compute distances between adjacent pavers
   const pvDists=useMemo(()=>{
@@ -248,39 +323,114 @@ export default function App(){
   <button onClick={()=>{const h=+wallHeight||walls[walls.length-1]?.height||24;const w=[...walls];w[w.length-1]={...w[w.length-1],height:h};setWalls(w);setShowWallH(false);setWallHeight('');}} style={{width:"100%",padding:"10px",borderRadius:6,background:"#8B6914",color:"#fff",border:"none",fontSize:12,fontWeight:700,cursor:"pointer"}}>Done</button>
 </div></div>}
 
-{/* Quick Layout Builder */}
-{showLayout&&<div style={{position:"fixed",top:0,left:0,right:0,bottom:0,background:"rgba(0,0,0,.4)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center"}} onClick={()=>setShowLayout(false)}><div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:14,padding:24,width:360,maxHeight:"85vh",overflow:"auto",boxShadow:`0 12px 40px ${DG}30`}}>
-  <div style={{fontSize:16,fontWeight:700,color:DG,marginBottom:16}}>Quick Layout Builder</div>
-  <div style={{fontSize:8,fontWeight:600,letterSpacing:2,color:`${DG}77`,marginBottom:6}}>MAIN YARD</div>
-  <div style={{display:"flex",gap:10,marginBottom:16}}>
-    <div style={{flex:1}}><div style={{fontSize:10,fontWeight:600,color:DG,marginBottom:3}}>Width (ft)</div><input type="number" inputMode="decimal" step="0.5" value={layoutData.width} onChange={e=>setLayoutData(d=>({...d,width:e.target.value}))} style={{...IS,width:"100%",fontSize:16,textAlign:"center"}} placeholder="44"/></div>
-    <div style={{flex:1}}><div style={{fontSize:10,fontWeight:600,color:DG,marginBottom:3}}>Length (ft)</div><input type="number" inputMode="decimal" step="0.5" value={layoutData.length} onChange={e=>setLayoutData(d=>({...d,length:e.target.value}))} style={{...IS,width:"100%",fontSize:16,textAlign:"center"}} placeholder="23.5"/></div>
+{/* Yard Builder (form-first, big-touch) */}
+{showLayout&&(()=>{
+  const bigInput={padding:"14px 14px",borderRadius:10,border:`2px solid ${DG}33`,background:"#fff",color:DG,fontSize:20,fontFamily:"'Outfit',sans-serif",width:"100%",minHeight:52,textAlign:"center",fontWeight:600};
+  const secLabel={fontSize:10,fontWeight:700,letterSpacing:2,color:DG,marginBottom:8,marginTop:4};
+  const fieldLabel={fontSize:12,fontWeight:600,color:`${DG}99`,marginBottom:6};
+  const cardStyle={padding:14,background:`${DG}08`,borderRadius:10,marginBottom:10,border:`1px solid ${DG}15`};
+  const pickerBtn=(active,col)=>({padding:"10px 8px",borderRadius:8,border:active?`2.5px solid ${DG}`:`1.5px solid ${DG}22`,background:active?`${DG}12`:"#fff",cursor:"pointer",fontSize:11,fontWeight:active?700:500,color:DG,minHeight:44,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:4});
+  const matOptions=[...BS.map(m=>({id:m.id,name:m.name,color:m.color})),{id:"putting",name:"Putting Green",color:PUT.color}];
+  const MaterialPicker=({value,onChange,compact})=>(
+    <div style={{display:"grid",gridTemplateColumns:`repeat(${compact?3:2},1fr)`,gap:6}}>
+      {matOptions.map(m=>(
+        <button key={m.id} onClick={()=>onChange(m.id)} style={pickerBtn(value===m.id)}>
+          <div style={{width:compact?16:22,height:compact?16:22,borderRadius:4,background:m.color,border:`1px solid ${DG}44`}}/>
+          <span style={{fontSize:compact?9:10,textAlign:"center",lineHeight:1.1}}>{m.name}</span>
+        </button>
+      ))}
+    </div>
+  );
+  return(
+<div style={{position:"fixed",top:0,left:0,right:0,bottom:0,background:"rgba(0,0,0,.5)",zIndex:200,display:"flex",alignItems:"flex-start",justifyContent:"center",padding:"20px 12px",overflowY:"auto"}} onClick={()=>{if(yard)setShowLayout(false);}}>
+<div onClick={e=>e.stopPropagation()} style={{background:CREAM,borderRadius:16,padding:22,width:"100%",maxWidth:520,boxShadow:`0 16px 48px ${DG}40`,marginBottom:24}}>
+  <div style={{fontSize:22,fontWeight:800,color:DG,marginBottom:4}}>Yard Builder</div>
+  <div style={{fontSize:12,color:`${DG}88`,marginBottom:20}}>Measure, type, tap Generate. Drag pieces into place after.</div>
+
+  {/* Main yard */}
+  <div style={secLabel}>MAIN YARD</div>
+  <div style={{display:"flex",gap:10,marginBottom:14}}>
+    <div style={{flex:1}}><div style={fieldLabel}>Width (ft)</div><input type="number" inputMode="decimal" step="0.5" value={layoutData.width} onChange={e=>setLayoutData(d=>({...d,width:e.target.value}))} style={bigInput} placeholder="44"/></div>
+    <div style={{flex:1}}><div style={fieldLabel}>Length (ft)</div><input type="number" inputMode="decimal" step="0.5" value={layoutData.length} onChange={e=>setLayoutData(d=>({...d,length:e.target.value}))} style={bigInput} placeholder="23.5"/></div>
   </div>
-  <div style={{fontSize:8,fontWeight:600,letterSpacing:2,color:`${DG}77`,marginBottom:6}}>CUTOUTS (planters, obstacles)</div>
-  {layoutData.cutouts.map((c,i)=><div key={i} style={{display:"flex",gap:6,alignItems:"center",marginBottom:6,padding:8,background:`${DG}05`,borderRadius:6}}>
-    <select value={c.pos} onChange={e=>{const u=[...layoutData.cutouts];u[i]={...u[i],pos:e.target.value};setLayoutData(d=>({...d,cutouts:u}));}} style={{...IS,padding:"6px",fontSize:11,flex:1}}>
-      <option value="">Position</option><option value="top-left">Top Left</option><option value="top-right">Top Right</option><option value="bottom-left">Bottom Left</option><option value="bottom-right">Bottom Right</option>
-    </select>
-    <input type="number" inputMode="decimal" step="0.25" placeholder="W" value={c.w} onChange={e=>{const u=[...layoutData.cutouts];u[i]={...u[i],w:e.target.value};setLayoutData(d=>({...d,cutouts:u}));}} style={{...IS,width:55,fontSize:13,textAlign:"center"}}/>
-    <span style={{fontSize:10,color:`${DG}55`}}>×</span>
-    <input type="number" inputMode="decimal" step="0.25" placeholder="L" value={c.h} onChange={e=>{const u=[...layoutData.cutouts];u[i]={...u[i],h:e.target.value};setLayoutData(d=>({...d,cutouts:u}));}} style={{...IS,width:55,fontSize:13,textAlign:"center"}}/>
-    <button onClick={()=>setLayoutData(d=>({...d,cutouts:d.cutouts.filter((_,j)=>j!==i)}))} style={{border:"none",background:"transparent",cursor:"pointer",fontSize:14,color:"#c05030",padding:"4px"}}>✕</button>
-  </div>)}
-  <button onClick={()=>setLayoutData(d=>({...d,cutouts:[...d.cutouts,{pos:'',w:'',h:''}]}))} style={{padding:"8px 12px",borderRadius:5,border:`1px dashed ${DG}33`,background:"transparent",fontSize:10,fontWeight:600,cursor:"pointer",color:DG,marginBottom:16,width:"100%"}}>+ Add Cutout</button>
-  <div style={{fontSize:8,fontWeight:600,letterSpacing:2,color:`${DG}77`,marginBottom:6}}>EXTRA SECTIONS (side yards, etc.)</div>
-  {layoutData.sections.map((sec,i)=><div key={i} style={{display:"flex",gap:6,alignItems:"center",marginBottom:6,padding:8,background:`${DG}05`,borderRadius:6}}>
-    <input placeholder="Label" value={sec.label||''} onChange={e=>{const u=[...layoutData.sections];u[i]={...u[i],label:e.target.value};setLayoutData(d=>({...d,sections:u}));}} style={{...IS,flex:1,fontSize:11}}/>
-    <input type="number" inputMode="decimal" step="0.5" placeholder="W" value={sec.w} onChange={e=>{const u=[...layoutData.sections];u[i]={...u[i],w:e.target.value};setLayoutData(d=>({...d,sections:u}));}} style={{...IS,width:55,fontSize:13,textAlign:"center"}}/>
-    <span style={{fontSize:10,color:`${DG}55`}}>×</span>
-    <input type="number" inputMode="decimal" step="0.5" placeholder="L" value={sec.h} onChange={e=>{const u=[...layoutData.sections];u[i]={...u[i],h:e.target.value};setLayoutData(d=>({...d,sections:u}));}} style={{...IS,width:55,fontSize:13,textAlign:"center"}}/>
-    <button onClick={()=>setLayoutData(d=>({...d,sections:d.sections.filter((_,j)=>j!==i)}))} style={{border:"none",background:"transparent",cursor:"pointer",fontSize:14,color:"#c05030",padding:"4px"}}>✕</button>
-  </div>)}
-  <button onClick={()=>setLayoutData(d=>({...d,sections:[...d.sections,{label:'',w:'',h:''}]}))} style={{padding:"8px 12px",borderRadius:5,border:`1px dashed ${DG}33`,background:"transparent",fontSize:10,fontWeight:600,cursor:"pointer",color:DG,marginBottom:20,width:"100%"}}>+ Add Section</button>
-  <div style={{display:"flex",gap:8}}>
-    <button onClick={generateLayout} style={{flex:1,padding:"12px",borderRadius:8,background:`linear-gradient(135deg,${DG},#2a6b4a)`,color:CREAM,border:"none",fontSize:13,fontWeight:700,cursor:"pointer"}}>Generate Layout</button>
-    <button onClick={()=>setShowLayout(false)} style={{padding:"12px 16px",borderRadius:8,border:`1px solid ${DG}30`,background:"transparent",color:DG,fontSize:12,cursor:"pointer"}}>Cancel</button>
-  </div>
-</div></div>}
+  <div style={fieldLabel}>Material</div>
+  <div style={{marginBottom:16}}><MaterialPicker value={layoutData.material} onChange={v=>setLayoutData(d=>({...d,material:v}))}/></div>
+
+  {/* Cutouts */}
+  <div style={secLabel}>CUTOUTS (planters, obstacles)</div>
+  {layoutData.cutouts.map((c,i)=>(
+    <div key={i} style={cardStyle}>
+      <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:10}}>
+        <select value={c.pos} onChange={e=>{const u=[...layoutData.cutouts];u[i]={...u[i],pos:e.target.value};setLayoutData(d=>({...d,cutouts:u}));}} style={{...bigInput,fontSize:15,flex:1,minHeight:48}}>
+          <option value="">Corner…</option><option value="top-left">Top Left</option><option value="top-right">Top Right</option><option value="bottom-left">Bottom Left</option><option value="bottom-right">Bottom Right</option>
+        </select>
+        <button onClick={()=>setLayoutData(d=>({...d,cutouts:d.cutouts.filter((_,j)=>j!==i)}))} style={{border:`1px solid #c0503044`,background:"#c0503012",cursor:"pointer",fontSize:18,color:"#c05030",borderRadius:8,width:48,minHeight:48,fontWeight:700}}>✕</button>
+      </div>
+      <div style={{display:"flex",gap:8}}>
+        <div style={{flex:1}}><div style={fieldLabel}>W (ft)</div><input type="number" inputMode="decimal" step="0.25" value={c.w} onChange={e=>{const u=[...layoutData.cutouts];u[i]={...u[i],w:e.target.value};setLayoutData(d=>({...d,cutouts:u}));}} style={{...bigInput,fontSize:16}}/></div>
+        <div style={{flex:1}}><div style={fieldLabel}>L (ft)</div><input type="number" inputMode="decimal" step="0.25" value={c.h} onChange={e=>{const u=[...layoutData.cutouts];u[i]={...u[i],h:e.target.value};setLayoutData(d=>({...d,cutouts:u}));}} style={{...bigInput,fontSize:16}}/></div>
+      </div>
+    </div>
+  ))}
+  <button onClick={()=>setLayoutData(d=>({...d,cutouts:[...d.cutouts,{pos:'',w:'',h:''}]}))} style={{padding:"12px",borderRadius:10,border:`2px dashed ${DG}44`,background:"transparent",fontSize:13,fontWeight:600,cursor:"pointer",color:DG,marginBottom:20,width:"100%",minHeight:48}}>+ Add Cutout</button>
+
+  {/* Side yards */}
+  <div style={secLabel}>SIDE YARDS</div>
+  {layoutData.sideYards.map((sec,i)=>(
+    <div key={i} style={cardStyle}>
+      <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:10}}>
+        <input placeholder="Label (e.g. Side Yard)" value={sec.label||''} onChange={e=>{const u=[...layoutData.sideYards];u[i]={...u[i],label:e.target.value};setLayoutData(d=>({...d,sideYards:u}));}} style={{...bigInput,fontSize:16,textAlign:"left",flex:1}}/>
+        <button onClick={()=>setLayoutData(d=>({...d,sideYards:d.sideYards.filter((_,j)=>j!==i)}))} style={{border:`1px solid #c0503044`,background:"#c0503012",cursor:"pointer",fontSize:18,color:"#c05030",borderRadius:8,width:48,minHeight:48,fontWeight:700}}>✕</button>
+      </div>
+      <div style={{display:"flex",gap:8,marginBottom:10}}>
+        <div style={{flex:1}}><div style={fieldLabel}>W (ft)</div><input type="number" inputMode="decimal" step="0.5" value={sec.w} onChange={e=>{const u=[...layoutData.sideYards];u[i]={...u[i],w:e.target.value};setLayoutData(d=>({...d,sideYards:u}));}} style={{...bigInput,fontSize:16}}/></div>
+        <div style={{flex:1}}><div style={fieldLabel}>L (ft)</div><input type="number" inputMode="decimal" step="0.5" value={sec.l} onChange={e=>{const u=[...layoutData.sideYards];u[i]={...u[i],l:e.target.value};setLayoutData(d=>({...d,sideYards:u}));}} style={{...bigInput,fontSize:16}}/></div>
+      </div>
+      <div style={fieldLabel}>Material</div>
+      <MaterialPicker compact value={sec.material||layoutData.material} onChange={v=>{const u=[...layoutData.sideYards];u[i]={...u[i],material:v};setLayoutData(d=>({...d,sideYards:u}));}}/>
+    </div>
+  ))}
+  <button onClick={()=>setLayoutData(d=>({...d,sideYards:[...d.sideYards,{label:'',w:'',l:'',material:d.material}]}))} style={{padding:"12px",borderRadius:10,border:`2px dashed ${DG}44`,background:"transparent",fontSize:13,fontWeight:600,cursor:"pointer",color:DG,marginBottom:20,width:"100%",minHeight:48}}>+ Add Side Yard</button>
+
+  {/* Sub-zones */}
+  <div style={secLabel}>SUB-ZONES (overlays: rocks around a tree, path, etc.)</div>
+  {layoutData.subZones.map((sz,i)=>{
+    const parentOpts=[{v:'main',n:'Main Yard'},...layoutData.sideYards.map((s,si)=>({v:`side-${si}`,n:s.label||`Side Yard ${si+1}`}))];
+    return(
+    <div key={i} style={cardStyle}>
+      <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:10}}>
+        <select value={sz.parent||'main'} onChange={e=>{const u=[...layoutData.subZones];u[i]={...u[i],parent:e.target.value};setLayoutData(d=>({...d,subZones:u}));}} style={{...bigInput,fontSize:14,flex:1,minHeight:48}}>
+          {parentOpts.map(o=><option key={o.v} value={o.v}>In: {o.n}</option>)}
+        </select>
+        <button onClick={()=>setLayoutData(d=>({...d,subZones:d.subZones.filter((_,j)=>j!==i)}))} style={{border:`1px solid #c0503044`,background:"#c0503012",cursor:"pointer",fontSize:18,color:"#c05030",borderRadius:8,width:48,minHeight:48,fontWeight:700}}>✕</button>
+      </div>
+      <div style={{display:"flex",gap:8,marginBottom:10}}>
+        {["rect","circle"].map(sh=>(
+          <button key={sh} onClick={()=>{const u=[...layoutData.subZones];u[i]={...u[i],shape:sh};setLayoutData(d=>({...d,subZones:u}));}} style={{flex:1,padding:"12px",borderRadius:8,border:(sz.shape||'rect')===sh?`2.5px solid ${DG}`:`1.5px solid ${DG}22`,background:(sz.shape||'rect')===sh?`${DG}12`:"#fff",cursor:"pointer",fontSize:13,fontWeight:700,color:DG,minHeight:48}}>{sh==="rect"?"▭ Rectangle":"◯ Circle"}</button>
+        ))}
+      </div>
+      {(sz.shape||'rect')==='rect'?(
+        <div style={{display:"flex",gap:8,marginBottom:10}}>
+          <div style={{flex:1}}><div style={fieldLabel}>W (ft)</div><input type="number" inputMode="decimal" step="0.25" value={sz.w||''} onChange={e=>{const u=[...layoutData.subZones];u[i]={...u[i],w:e.target.value};setLayoutData(d=>({...d,subZones:u}));}} style={{...bigInput,fontSize:16}}/></div>
+          <div style={{flex:1}}><div style={fieldLabel}>L (ft)</div><input type="number" inputMode="decimal" step="0.25" value={sz.l||''} onChange={e=>{const u=[...layoutData.subZones];u[i]={...u[i],l:e.target.value};setLayoutData(d=>({...d,subZones:u}));}} style={{...bigInput,fontSize:16}}/></div>
+        </div>
+      ):(
+        <div style={{marginBottom:10}}><div style={fieldLabel}>Radius (ft)</div><input type="number" inputMode="decimal" step="0.25" value={sz.radius||''} onChange={e=>{const u=[...layoutData.subZones];u[i]={...u[i],radius:e.target.value};setLayoutData(d=>({...d,subZones:u}));}} style={{...bigInput,fontSize:16}}/></div>
+      )}
+      <input placeholder="Label (optional)" value={sz.label||''} onChange={e=>{const u=[...layoutData.subZones];u[i]={...u[i],label:e.target.value};setLayoutData(d=>({...d,subZones:u}));}} style={{...bigInput,fontSize:14,textAlign:"left",marginBottom:10}}/>
+      <div style={fieldLabel}>Material</div>
+      <MaterialPicker compact value={sz.material||layoutData.material} onChange={v=>{const u=[...layoutData.subZones];u[i]={...u[i],material:v};setLayoutData(d=>({...d,subZones:u}));}}/>
+    </div>
+    );
+  })}
+  <button onClick={()=>setLayoutData(d=>({...d,subZones:[...d.subZones,{parent:'main',shape:'rect',w:'',l:'',radius:'',material:d.material,label:''}]}))} style={{padding:"12px",borderRadius:10,border:`2px dashed ${DG}44`,background:"transparent",fontSize:13,fontWeight:600,cursor:"pointer",color:DG,marginBottom:20,width:"100%",minHeight:48}}>+ Add Sub-Zone</button>
+
+  {/* Actions */}
+  <button onClick={generateLayout} style={{width:"100%",padding:"18px",borderRadius:12,background:`linear-gradient(135deg,${DG},#2a6b4a)`,color:CREAM,border:"none",fontSize:17,fontWeight:800,cursor:"pointer",minHeight:60,boxShadow:`0 4px 12px ${DG}40`}}>Generate Layout →</button>
+  {yard&&<button onClick={()=>setShowLayout(false)} style={{marginTop:10,width:"100%",padding:"14px",borderRadius:10,border:`1.5px solid ${DG}30`,background:"transparent",color:DG,fontSize:13,cursor:"pointer",minHeight:48}}>Cancel</button>}
+</div></div>
+  );
+})()}
 
 {/* RENDER VIEW */}
 {view==="render"&&yard&&<div style={{padding:16,maxWidth:900,margin:"0 auto"}}>
@@ -333,16 +483,14 @@ export default function App(){
 {view==="edit"&&<div style={{display:"flex",height:"calc(100vh - 48px)",flexDirection:window.innerWidth<768?"column":"row"}}>
   <div style={{width:window.innerWidth<768?"100%":230,maxHeight:window.innerWidth<768?170:"none",borderRight:window.innerWidth>=768?`1px solid ${DG}18`:"none",borderBottom:window.innerWidth<768?`1px solid ${DG}18`:"none",display:"flex",flexDirection:"column",background:"#f0e8c8",overflow:"hidden"}}>
     <div style={{padding:"8px 10px",borderBottom:`1px solid ${DG}15`}}>
-      {dY?<div style={{fontSize:11,fontWeight:600,color:"#c87830"}}>🔴 Drawing Yard</div>
-      :dMode?<div style={{fontSize:11,fontWeight:600,color:dMode==='green'?PUT.color:dMode==='wall'?"#8B6914":DG}}>{dMode==='green'?"🟢 Putting Green":dMode==='wall'?"🟤 Wall":"🔷 Zone"}</div>
+      {dMode==='wall'?<div style={{fontSize:11,fontWeight:600,color:"#8B6914"}}>🟤 Tap to place wall points</div>
       :placing?<div style={{fontSize:11,fontWeight:600,color:placing==='fp'?"#555":"#a08040"}}>{placing==='fp'?"⚫ Fire Pits":"🟫 Pavers"}</div>
       :yard?<div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
-        {[["zone","+ Zone",DG],["green","+ Putting",PUT.color],["paver","+ Pavers","#8a6a30"],["fp","+ Fire Pit","#555"],["wall","+ Wall","#8B6914"]].map(([k,l,c])=>
-          <button key={k} onClick={()=>{if(k==='zone'){setDMode('zone');setDPts([]);clr();setTool("poly");}else if(k==='green'){setDMode('green');setDPts([]);clr();setTool("circle");}else if(k==='wall'){setDMode('wall');setDPts([]);clr();setTool("poly");}else{setPlacing(k);clr();}}} style={{flex:"1 1 45%",padding:"10px 8px",borderRadius:6,border:`1px dashed ${c}55`,background:"transparent",color:c,fontSize:10,fontWeight:600,cursor:"pointer",minHeight:44}}>{l}</button>)}
+        <button onClick={()=>setShowLayout(true)} style={{flex:"1 1 100%",padding:"12px 8px",borderRadius:8,border:`2px solid ${DG}`,background:`${DG}12`,color:DG,fontSize:12,fontWeight:700,cursor:"pointer",minHeight:48,marginBottom:4}}>✎ Edit Yard Builder</button>
+        {[["paver","+ Pavers","#8a6a30"],["fp","+ Fire Pit","#555"],["wall","+ Wall","#8B6914"]].map(([k,l,c])=>
+          <button key={k} onClick={()=>{if(k==='wall'){setDMode('wall');setDPts([]);clr();}else{setPlacing(k);clr();}}} style={{flex:"1 1 45%",padding:"10px 8px",borderRadius:6,border:`1px dashed ${c}55`,background:"transparent",color:c,fontSize:10,fontWeight:600,cursor:"pointer",minHeight:44}}>{l}</button>)}
       </div>:null}
     </div>
-    {dMode&&dMode!=='wall'&&<div style={{padding:"6px 10px",borderBottom:`1px solid ${DG}15`,display:"flex",gap:3}}>{[["poly","▬"],["rect","▭"],["curve","〰"],["circle","◯"]].map(([id,ic])=><button key={id} onClick={()=>{setTool(id);setDPts([]);setCDrag(null);rectStart.current=null;}} style={{flex:1,padding:"8px 4px",borderRadius:4,border:`1.5px solid ${tool===id?DG:DG+"30"}`,background:tool===id?`${DG}15`:"transparent",cursor:"pointer",fontSize:11,color:tool===id?DG:`${DG}55`,minHeight:40}}>{ic}</button>)}</div>}
-    {(dY||dMode)&&<div style={{padding:"5px 10px",borderBottom:`1px solid ${DG}15`}}><button onClick={()=>setStraight(!straight)} style={{width:"100%",padding:"5px",borderRadius:4,border:`1.5px solid ${straight?"#3080d0":DG+"30"}`,background:straight?"#3080d015":"transparent",cursor:"pointer",fontSize:9,fontWeight:600,color:straight?"#3080d0":`${DG}88`,display:"flex",alignItems:"center",justifyContent:"center",gap:4}}>📐 {straight?"Straight ON":"Straight"}</button></div>}
     {placing==='paver'&&<div style={{padding:"6px 10px",borderBottom:`1px solid ${DG}15`}}>
       <div style={{display:"flex",gap:2,marginBottom:4}}>{[["single","Single"],["walkway","Walkway"],["patio","Patio"]].map(([id,lb])=><button key={id} onClick={()=>{setPvMode(id);setPvStart(null);}} style={{flex:1,padding:"4px",borderRadius:4,border:`1.5px solid ${pvMode===id?"#8a6a30":"#8a6a3030"}`,background:pvMode===id?"#8a6a3015":"transparent",cursor:"pointer",fontSize:8,fontWeight:pvMode===id?700:400,color:pvMode===id?"#8a6a30":`${DG}77`}}>{lb}</button>)}</div>
       {pvMode==='walkway'&&<div style={{display:"flex",gap:4,marginTop:2}}>
@@ -356,11 +504,10 @@ export default function App(){
         <div style={{flex:1}}><div style={{fontSize:6,color:`${DG}55`,marginBottom:1}}>Gap (ft)</div><input type="number" value={pvCfg.gap} onChange={e=>setPvCfg(c=>({...c,gap:+e.target.value||0}))} style={{width:"100%",padding:"3px 5px",borderRadius:3,border:`1px solid ${DG}30`,fontSize:9,color:DG,background:"#fff"}}/></div>
       </div>}
     </div>}
-    {!dY&&!dMode&&!placing&&(sel||selPv!==null||selFp!==null)&&<div style={{padding:"6px 10px",borderBottom:`1px solid ${DG}15`}}><button onClick={()=>{if(sel?.type==='zone')setZones(p=>p.filter((_,j)=>j!==sel.idx));else if(sel?.type==='green')setGreens(p=>p.filter((_,j)=>j!==sel.idx));else if(sel?.type==='wall')setWalls(p=>p.filter((_,j)=>j!==sel.idx));else if(selPv!==null)setPvs(p=>p.filter((_,j)=>j!==selPv));else if(selFp!==null)setFps(p=>p.filter((_,j)=>j!==selFp));clr();}} style={{width:"100%",padding:"8px",borderRadius:6,background:"#c05030",color:"#fff",fontSize:11,fontWeight:700,cursor:"pointer",border:"none",minHeight:40}}>Delete Selected</button></div>}
-    {(dY||dMode)&&(dY?yd:dPts).length>=4&&<div style={{padding:"6px 10px",borderBottom:`1px solid ${DG}15`}}><button onClick={closeShape} style={{width:"100%",padding:"10px",borderRadius:6,background:"#c87830",color:"#fff",fontSize:12,fontWeight:700,cursor:"pointer",border:"none",minHeight:44}}>Close Shape</button></div>}
+    {!dMode&&!placing&&(sel||selPv!==null||selFp!==null)&&<div style={{padding:"6px 10px",borderBottom:`1px solid ${DG}15`}}><button onClick={()=>{if(sel?.type==='zone')setZones(p=>p.filter((_,j)=>j!==sel.idx));else if(sel?.type==='green')setGreens(p=>p.filter((_,j)=>j!==sel.idx));else if(sel?.type==='wall')setWalls(p=>p.filter((_,j)=>j!==sel.idx));else if(selPv!==null)setPvs(p=>p.filter((_,j)=>j!==selPv));else if(selFp!==null)setFps(p=>p.filter((_,j)=>j!==selFp));clr();}} style={{width:"100%",padding:"10px",borderRadius:6,background:"#c05030",color:"#fff",fontSize:12,fontWeight:700,cursor:"pointer",border:"none",minHeight:44}}>Delete Selected</button></div>}
     {dMode==='wall'&&dPts.length>=2&&<div style={{padding:"6px 10px",borderBottom:`1px solid ${DG}15`}}><button onClick={()=>{setWalls(p=>[...p,{pts:[...dPts],height:24,side:'left'}]);setShowWallH(true);setDPts([]);setDMode(null);}} style={{width:"100%",padding:"10px",borderRadius:6,background:"#8B6914",color:"#fff",fontSize:12,fontWeight:700,cursor:"pointer",border:"none",minHeight:44}}>Finish Wall</button></div>}
-    {(placing||dMode)&&<div style={{padding:"6px 10px",borderBottom:`1px solid ${DG}15`}}><button onClick={()=>{setPlacing(null);setDMode(null);setDPts([]);setCDrag(null);setStraight(false);setPvStart(null);setPvMode("single");rectStart.current=null;}} style={{width:"100%",padding:"8px",borderRadius:4,background:DG,color:CREAM,fontSize:10,fontWeight:600,cursor:"pointer",border:"none",minHeight:40}}>{placing?"Done":"Cancel"}</button></div>}
-    {yard&&!dY&&<div style={{flex:1,overflowY:"auto",padding:"4px 0",fontSize:10}}>
+    {(placing||dMode)&&<div style={{padding:"6px 10px",borderBottom:`1px solid ${DG}15`}}><button onClick={()=>{setPlacing(null);setDMode(null);setDPts([]);setPvStart(null);setPvMode("single");}} style={{width:"100%",padding:"10px",borderRadius:6,background:DG,color:CREAM,fontSize:11,fontWeight:600,cursor:"pointer",border:"none",minHeight:44}}>{placing?"Done":"Cancel"}</button></div>}
+    {yard&&<div style={{flex:1,overflowY:"auto",padding:"4px 0",fontSize:10}}>
       {!dMode&&!placing&&<>{["Turf","Rock"].map(cat=><div key={cat}><div style={{padding:"3px 10px 1px",fontSize:7,fontWeight:600,color:`${DG}77`,letterSpacing:1}}>{cat}</div>
         {BS.filter(x=>x.cat===cat).map(s=><button key={s.id} onClick={()=>{setActS(s.id);if(sel?.type==='zone'&&zones[sel.idx])setZones(p=>{const u=[...p];u[sel.idx]={...u[sel.idx],s:s.id};return u;});}} style={{width:"100%",padding:"4px 10px",border:"none",cursor:"pointer",display:"flex",alignItems:"center",gap:6,background:actS===s.id?`${DG}12`:"transparent",borderRadius:3}}>
           <div style={{width:10,height:10,borderRadius:2,background:s.color,border:actS===s.id?`2px solid ${DG}`:`1px solid ${DG}30`}}/><div style={{flex:1,fontWeight:actS===s.id?600:400,color:actS===s.id?DG:`${DG}88`}}>{s.name}</div><span style={{fontSize:7,color:`${DG}55`}}>${s.price}</span>
@@ -371,8 +518,7 @@ export default function App(){
       {fps.length>0&&<div style={{padding:"6px 10px 2px",borderTop:`1px solid ${DG}12`}}><div style={{fontSize:6,fontWeight:600,letterSpacing:2,color:`${DG}55`,marginBottom:2}}>FIRE PITS ({fps.length})</div>{fps.map((fp,i)=><div key={i} onClick={()=>{setSelFp(i);setSel(null);setSelPv(null);}} style={{display:"flex",alignItems:"center",gap:4,padding:"2px 5px",borderRadius:3,cursor:"pointer",background:selFp===i?"#44444412":"transparent"}}><div style={{flex:1}}>Fire Pit {i+1}</div><button onClick={e=>{e.stopPropagation();setFps(p=>p.filter((_,j)=>j!==i));}} style={{border:"none",background:"transparent",cursor:"pointer",fontSize:7,color:"#c05030"}}>✕</button></div>)}</div>}
       {walls.length>0&&<div style={{padding:"6px 10px 2px",borderTop:`1px solid ${DG}12`}}><div style={{fontSize:6,fontWeight:600,letterSpacing:2,color:`${DG}55`,marginBottom:2}}>WALLS ({walls.length})</div>{walls.map((w,i)=><div key={i} onClick={()=>{setSel({type:'wall',idx:i});setSelPv(null);setSelFp(null);}} style={{display:"flex",alignItems:"center",gap:4,padding:"4px 5px",borderRadius:3,cursor:"pointer",background:sel?.type==='wall'&&sel.idx===i?"#8B691412":"transparent"}}><div style={{flex:1}}>Wall {i+1} · {wallLen(w).toFixed(1)}ft · {(w.height||24)}"</div><button onClick={e=>{e.stopPropagation();setWalls(p=>p.filter((_,j)=>j!==i));}} style={{border:"none",background:"transparent",cursor:"pointer",fontSize:10,color:"#c05030",padding:"4px"}}>✕</button></div>)}</div>}
       <div style={{padding:"8px 10px",borderTop:`1px solid ${DG}12`,marginTop:2,display:"flex",gap:4,flexWrap:"wrap"}}>
-        <button onClick={()=>setShowLayout(true)} style={{flex:"1 1 45%",padding:"6px",borderRadius:4,border:`1px solid ${DG}33`,background:`${DG}08`,color:DG,fontSize:8,cursor:"pointer",fontWeight:600}}>Quick Layout</button>
-        <button onClick={()=>{setYard(null);setYd([]);setDY(true);setZones([]);setGreens([]);setDPts([]);setDMode(null);clr();setPvs([]);setFps([]);setWalls([]);setPlacing(null);}} style={{flex:"1 1 45%",padding:"6px",borderRadius:4,border:"1px solid #c0503033",background:"transparent",color:"#c05030",fontSize:8,cursor:"pointer"}}>Reset All</button>
+        <button onClick={()=>{setYard(null);setZones([]);setGreens([]);setDPts([]);setDMode(null);clr();setPvs([]);setFps([]);setWalls([]);setPlacing(null);setLayoutData({width:'',length:'',material:'standard',cutouts:[],sideYards:[],subZones:[]});setShowLayout(true);}} style={{flex:"1 1 100%",padding:"8px",borderRadius:4,border:"1px solid #c0503033",background:"transparent",color:"#c05030",fontSize:10,cursor:"pointer",fontWeight:600}}>Reset All</button>
       </div>
     </div>}
   </div>
@@ -407,34 +553,33 @@ export default function App(){
         {/* Walls */}
         {walls.map((w,i)=>{const isSel=sel?.type==='wall'&&sel.idx===i;return(<g key={`w${i}`} onClick={e=>{e.stopPropagation();if(!isD&&!placing){setSel({type:'wall',idx:i});setSelPv(null);setSelFp(null);}}} style={{cursor:"pointer"}}><polyline points={w.pts.map(p=>`${p.x},${p.y}`).join(" ")} fill="none" stroke={isSel?"#c87830":"#8B6914"} strokeWidth={5} strokeLinecap="round" strokeLinejoin="round" filter={isSel?"url(#sel)":"url(#zsh)"}/>{w.pts.slice(0,-1).map((a,j)=>{const b=w.pts[j+1],dx=b.x-a.x,dy=b.y-a.y,len=Math.hypot(dx,dy),nx=-dy/len,ny=dx/len,sign=w.side==='left'?1:-1,cnt=Math.max(1,Math.floor(len/f2p(2)));return Array.from({length:cnt}).map((_,k)=>{const t=(k+1)/(cnt+1),mx=a.x+dx*t,my=a.y+dy*t;return<line key={`wh${j}-${k}`} x1={mx} y1={my} x2={mx+nx*8*sign} y2={my+ny*8*sign} stroke="#8B6914" strokeWidth={1.5}/>;});})}{(()=>{const mid=w.pts[Math.floor(w.pts.length/2)];return(<><rect x={mid.x-20} y={mid.y-10} width={40} height={18} rx={3} fill="rgba(255,255,255,.92)"/><text x={mid.x} y={mid.y+3} textAnchor="middle" fill="#8B6914" fontSize="8" fontWeight="600">{(w.height||24)}" wall</text></>);})()}{isSel&&w.pts.map((p,j)=><g key={`wv${j}`} onMouseDown={e=>hDown(e,'v',{t:'z',i:j,idx:i,layer:'wall'})} onTouchStart={e=>hDown(e,'v',{t:'z',i:j,idx:i,layer:'wall'})} style={{cursor:"grab"}}><circle cx={p.x} cy={p.y} r={12} fill="transparent"/><circle cx={p.x} cy={p.y} r={5} fill="#fff" stroke="#8B6914" strokeWidth={2}/></g>)}</g>);})}
         {/* Vertex handles */}
-        {yard&&!isD&&!placing&&yard.v.map((v,i)=><g key={`yv${i}`} onMouseDown={e=>hDown(e,'v',{t:'y',i})} onTouchStart={e=>hDown(e,'v',{t:'y',i})} style={{cursor:"grab"}}><circle cx={v.x} cy={v.y} r={12} fill="transparent"/><circle cx={v.x} cy={v.y} r={4.5} fill="#fff" stroke={DG} strokeWidth="2"/></g>)}
         {selZ&&!isD&&!placing&&(selZ.type==='circle'?<g onMouseDown={e=>hDown(e,'v',{t:'z',i:0,idx:sel.idx,layer:'zone'})} onTouchStart={e=>hDown(e,'v',{t:'z',i:0,idx:sel.idx,layer:'zone'})} style={{cursor:"grab"}}><circle cx={selZ.cx} cy={selZ.cy} r={14} fill="transparent"/><circle cx={selZ.cx} cy={selZ.cy} r={5} fill="#fff" stroke="#c87830" strokeWidth="2"/></g>:selZ.pts.map((v,i)=><g key={i} onMouseDown={e=>hDown(e,'v',{t:'z',i,idx:sel.idx,layer:'zone'})} onTouchStart={e=>hDown(e,'v',{t:'z',i,idx:sel.idx,layer:'zone'})} style={{cursor:"grab"}}><circle cx={v.x} cy={v.y} r={14} fill="transparent"/><circle cx={v.x} cy={v.y} r={5} fill="#fff" stroke="#c87830" strokeWidth="2"/></g>))}
         {selG&&!isD&&!placing&&(selG.type==='circle'?<g onMouseDown={e=>hDown(e,'v',{t:'z',i:0,idx:sel.idx,layer:'green'})} onTouchStart={e=>hDown(e,'v',{t:'z',i:0,idx:sel.idx,layer:'green'})} style={{cursor:"grab"}}><circle cx={selG.cx} cy={selG.cy} r={14} fill="transparent"/><circle cx={selG.cx} cy={selG.cy} r={5} fill="#fff" stroke="#c87830" strokeWidth="2"/></g>:selG.pts.map((v,i)=><g key={i} onMouseDown={e=>hDown(e,'v',{t:'z',i,idx:sel.idx,layer:'green'})} onTouchStart={e=>hDown(e,'v',{t:'z',i,idx:sel.idx,layer:'green'})} style={{cursor:"grab"}}><circle cx={v.x} cy={v.y} r={14} fill="transparent"/><circle cx={v.x} cy={v.y} r={5} fill="#fff" stroke="#c87830" strokeWidth="2"/></g>))}
         {/* Yard dims */}
         {yard&&!isD&&!placing&&yard.v.map((v,i)=>{const j=(i+1)%yard.v.length,w=yard.v[j],mx=(v.x+w.x)/2,my=(v.y+w.y)/2,f=p2f(Math.hypot(w.x-v.x,w.y-v.y));if(f<2)return null;const lb=fmt(f),lw=lb.length*5+8;return(<g key={`d${i}`}><rect x={mx-lw/2} y={my-8} width={lw} height={14} rx={3} fill="rgba(255,255,255,.92)"/><text x={mx} y={my+2} textAnchor="middle" fill={DG} fontSize="7" fontWeight="600">{lb}</text></g>);})}
-        {/* Drawing */}
-        {/* Live dimensions on placed segments */}
-        {isD&&cur.length>=2&&cur.map((v,i)=>{if(i===0)return null;const prev=cur[i-1],mx=(prev.x+v.x)/2,my=(prev.y+v.y)/2,d=p2f(Math.hypot(v.x-prev.x,v.y-prev.y));if(d<1)return null;const lb=fmt(d),lw=lb.length*5+8,col=dY?"#c87830":dMode==='green'?PUT.color:dMode==='wall'?"#8B6914":DG;return(<g key={`ld${i}`}><rect x={mx-lw/2} y={my-18} width={lw} height={14} rx={3} fill={col} opacity=".85"/><text x={mx} y={my-8} textAnchor="middle" fill="#fff" fontSize="7.5" fontWeight="600">{lb}</text></g>);})}
-        {/* Rect tool preview */}
-        {dMode&&tool==="rect"&&rectStart.current&&hov&&<rect x={Math.min(rectStart.current.x,hov.x)} y={Math.min(rectStart.current.y,hov.y)} width={Math.abs(hov.x-rectStart.current.x)} height={Math.abs(hov.y-rectStart.current.y)} fill={dMode==='green'?"#2a5e2033":`${BS.find(x=>x.id===actS)?.color||DG}33`} stroke={dMode==='green'?PUT.color:DG} strokeWidth="1.5" strokeDasharray="6 3"/>}
-        {isD&&cur.length>=2&&<polyline points={cur.map(v=>`${v.x},${v.y}`).join(" ")} fill="none" stroke={dY?"#c87830":dMode==='green'?PUT.color:dMode==='wall'?"#8B6914":DG} strokeWidth={dMode==='wall'?4:2} strokeDasharray="6 3"/>}
-        {isD&&hov&&cur.length>0&&!cDrag&&<line x1={cur[cur.length-1].x} y1={cur[cur.length-1].y} x2={hov.x} y2={hov.y} stroke={dY?"#c87830":dMode==='green'?PUT.color:DG} strokeWidth="1.5" strokeDasharray="4 3" opacity=".5"/>}
-        {isD&&ld&&!cDrag&&(()=>{const lb=fmt(ld.d),lw=lb.length*5+10,col=dY?"#c87830":dMode==='green'?PUT.color:DG;return(<g><rect x={ld.x-lw/2} y={ld.y-20} width={lw} height={16} rx={3} fill={col} opacity=".92"/><text x={ld.x} y={ld.y-9} textAnchor="middle" fill="#fff" fontSize="8" fontWeight="700">{lb}</text></g>);})()}
-        {cDrag&&hov?.r&&(()=>{const rf=p2f(hov.r),lb=fmt(rf)+" r",sf=cSF(hov.r);return(<><circle cx={cDrag.cx} cy={cDrag.cy} r={hov.r} fill={dMode==='green'?"#2a5e2033":`${BS.find(x=>x.id===actS)?.color}33`} stroke={dMode==='green'?PUT.color:DG} strokeWidth="1.5" strokeDasharray="6 3"/><rect x={cDrag.cx-34} y={cDrag.cy-9} width={68} height={18} rx={3} fill={dMode==='green'?PUT.color:DG} opacity=".92"/><text x={cDrag.cx} y={cDrag.cy+3} textAnchor="middle" fill="#fff" fontSize="8" fontWeight="700">{lb} · {sf.toFixed(0)}sf</text></>);})()}
-        {isD&&cur.map((v,i)=>{const col=dY?"#c87830":dMode==='green'?PUT.color:dMode==='wall'?"#8B6914":DG;return(<g key={i}><circle cx={v.x} cy={v.y} r={i===0&&cur.length>=4?14:6} fill={i===0&&cur.length>=4?col:"#fff"} stroke={i===0&&cur.length>=4?"#fff":col} strokeWidth="2" opacity={i===0&&cur.length>=4?.8:1}/>{i===0&&cur.length>=4&&dMode!=='wall'&&<text x={v.x} y={v.y-16} textAnchor="middle" fill={col} fontSize="8" fontWeight="600">tap to close</text>}</g>);})}
+        {/* Wall drawing in progress */}
+        {isD&&dPts.length>=1&&<>
+          {dPts.length>=2&&<polyline points={dPts.map(v=>`${v.x},${v.y}`).join(" ")} fill="none" stroke="#8B6914" strokeWidth={4} strokeDasharray="6 3"/>}
+          {dPts.length>=2&&dPts.map((v,i)=>{if(i===0)return null;const prev=dPts[i-1],mx=(prev.x+v.x)/2,my=(prev.y+v.y)/2,d=p2f(Math.hypot(v.x-prev.x,v.y-prev.y));if(d<1)return null;const lb=fmt(d),lw=lb.length*5+8;return(<g key={`ld${i}`}><rect x={mx-lw/2} y={my-18} width={lw} height={14} rx={3} fill="#8B6914" opacity=".85"/><text x={mx} y={my-8} textAnchor="middle" fill="#fff" fontSize="7.5" fontWeight="600">{lb}</text></g>);})}
+          {hov&&dPts.length>0&&<line x1={dPts[dPts.length-1].x} y1={dPts[dPts.length-1].y} x2={hov.x} y2={hov.y} stroke="#8B6914" strokeWidth="1.5" strokeDasharray="4 3" opacity=".5"/>}
+          {dPts.map((v,i)=><g key={`wp${i}`}><circle cx={v.x} cy={v.y} r={6} fill="#fff" stroke="#8B6914" strokeWidth="2"/></g>)}
+        </>}
         {placing==='fp'&&hov&&<circle cx={hov.x} cy={hov.y} r={FPR_PX} fill="#44444433" stroke="#555" strokeWidth="1" strokeDasharray="4 3"/>}
         {/* Walkway preview */}
         {placing==='paver'&&pvMode==='walkway'&&pvStart&&hov&&(()=>{const dx=hov.x-pvStart.x,dy=hov.y-pvStart.y,dist=Math.hypot(dx,dy);if(dist<1)return null;const ux=dx/dist,uy=dy/dist,stepPx=f2p(pvCfg.spacing),rot=Math.round(Math.atan2(uy,ux)*180/Math.PI/5)*5;return(<g>{Array.from({length:pvCfg.count-1}).map((_,i)=>{const px=pvStart.x+ux*stepPx*(i+1),py=pvStart.y+uy*stepPx*(i+1);return<rect key={i} x={px-PW_PX/2} y={py-PH_PX/2} width={PW_PX} height={PH_PX} rx={2} fill="#a0804033" stroke="#a08040" strokeWidth=".7" strokeDasharray="3 2" transform={`rotate(${rot} ${px} ${py})`}/>;})}<line x1={pvStart.x} y1={pvStart.y} x2={pvStart.x+ux*stepPx*(pvCfg.count-1)} y2={pvStart.y+uy*stepPx*(pvCfg.count-1)} stroke="#a08040" strokeWidth=".5" strokeDasharray="4 3" opacity=".4"/></g>);})()}
         {/* Patio preview */}
         {placing==='paver'&&pvMode==='patio'&&hov&&(()=>{const gapPx=f2p(pvCfg.gap+PW);return(<g>{Array.from({length:pvCfg.rows}).map((_,r)=>Array.from({length:pvCfg.cols}).map((_,c)=>{const px=hov.x+c*gapPx,py=hov.y+r*gapPx;return<rect key={`${r}-${c}`} x={px-PW_PX/2} y={py-PH_PX/2} width={PW_PX} height={PH_PX} rx={2} fill="#a0804033" stroke="#a08040" strokeWidth=".7" strokeDasharray="3 2"/>;}))}</g>);})()}
-        {/* Straight-line constraint indicator */}
-        {straight&&(dY||dMode)&&hov&&(()=>{const pts=dY?yd:dPts;if(!pts.length)return null;const last=pts[pts.length-1],isH=Math.abs(hov.x-last.x)>=Math.abs(hov.y-last.y);return<line x1={last.x} y1={last.y} x2={isH?hov.x:last.x} y2={isH?last.y:hov.y} stroke={isH?"#3080d0":"#30a040"} strokeWidth="1.2" strokeDasharray="6 3" opacity=".6"/>;})()}
         {/* Alignment guides */}
         {(isD||placing)&&hov&&guides.vLines.map((x,i)=><line key={`gv${i}`} x1={x} y1={0} x2={x} y2={CH} stroke="#e06020" strokeWidth=".8" strokeDasharray="4 4" opacity=".55"/>)}
         {(isD||placing)&&hov&&guides.hLines.map((y,i)=><line key={`gh${i}`} x1={0} y1={y} x2={CW} y2={y} stroke="#e06020" strokeWidth=".8" strokeDasharray="4 4" opacity=".55"/>)}
         {/* Paver spacing labels */}
         {(placing==='paver'||selPv!==null)&&pvDists.map((d,i)=>{const lb=fmt(d.d),lw=lb.length*4.5+8;return(<g key={`pd${i}`}><line x1={d.ax} y1={d.ay} x2={d.bx} y2={d.by} stroke="#a08040" strokeWidth=".7" strokeDasharray="3 2" opacity=".6"/><rect x={d.mx-lw/2} y={d.my-7} width={lw} height={13} rx={3} fill="rgba(255,255,255,.92)" stroke="#a0804044" strokeWidth=".5"/><text x={d.mx} y={d.my+2.5} textAnchor="middle" fill="#8a6a30" fontSize="6.5" fontFamily="'JetBrains Mono',monospace" fontWeight="600">{lb}</text></g>);})}
-        {dY&&yd.length===0&&<><text x={CW/2} y={CH/2-20} textAnchor="middle" fill={`${DG}55`} fontSize="13" fontWeight="500">Tap to outline the yard</text><text x={CW/2} y={CH/2-4} textAnchor="middle" fill={`${DG}33`} fontSize="9">6" snap · Double-tap to close</text><text x={CW/2} y={CH/2+16} textAnchor="middle" fill={`${DG}55`} fontSize="10" fontWeight="600" style={{cursor:"pointer"}} onClick={e=>{e.stopPropagation();setShowLayout(true);}}>— or —</text><rect x={CW/2-55} y={CH/2+26} width={110} height={30} rx={6} fill={DG} style={{cursor:"pointer"}} onClick={e=>{e.stopPropagation();setShowLayout(true);}}/><text x={CW/2} y={CH/2+45} textAnchor="middle" fill={CREAM} fontSize="10" fontWeight="600" style={{cursor:"pointer",pointerEvents:"none"}}>Quick Layout</text></>}
+        {/* Just-generated pulse: drag me hint */}
+        {justGenerated&&zones.map((z,i)=>{if(!justGenerated.zones.has(i))return null;const c=z.type==='circle'?{x:z.cx,y:z.cy}:ct(z.pts);return(<g key={`jg${i}`} style={{pointerEvents:"none"}}>{z.type==='circle'?<circle cx={z.cx} cy={z.cy} r={z.r+3} fill="none" stroke="#c87830" strokeWidth="2.5" strokeDasharray="6 4" style={{animation:"pulse 1.2s infinite"}}/>:<path d={zP(z.pts)} fill="none" stroke="#c87830" strokeWidth="2.5" strokeDasharray="6 4" style={{animation:"pulse 1.2s infinite"}}/>}<rect x={c.x-24} y={c.y-24} width={48} height={14} rx={3} fill="#c87830"/><text x={c.x} y={c.y-14} textAnchor="middle" fill="#fff" fontSize="8" fontWeight="700">↔ drag me</text></g>);})}
+        {justGenerated&&greens.map((g,i)=>{if(!justGenerated.greens.has(i))return null;const c=g.type==='circle'?{x:g.cx,y:g.cy}:ct(g.pts);return(<g key={`jgg${i}`} style={{pointerEvents:"none"}}>{g.type==='circle'?<circle cx={g.cx} cy={g.cy} r={g.r+3} fill="none" stroke="#c87830" strokeWidth="2.5" strokeDasharray="6 4" style={{animation:"pulse 1.2s infinite"}}/>:<path d={zP(g.pts)} fill="none" stroke="#c87830" strokeWidth="2.5" strokeDasharray="6 4" style={{animation:"pulse 1.2s infinite"}}/>}<rect x={c.x-24} y={c.y-24} width={48} height={14} rx={3} fill="#c87830"/><text x={c.x} y={c.y-14} textAnchor="middle" fill="#fff" fontSize="8" fontWeight="700">↔ drag me</text></g>);})}
+        {/* Large move handle on selected zone/green */}
+        {sel?.type==='zone'&&selZ&&selZ.type!=='circle'&&(()=>{const c=ct(selZ.pts);return(<g onMouseDown={e=>hDown(e,'zmove',{layer:'zone',idx:sel.idx})} onTouchStart={e=>hDown(e,'zmove',{layer:'zone',idx:sel.idx})} style={{cursor:"grab"}}><circle cx={c.x} cy={c.y} r={18} fill="#c87830" opacity=".9" stroke="#fff" strokeWidth="2.5"/><text x={c.x} y={c.y+4} textAnchor="middle" fill="#fff" fontSize="14" fontWeight="800">✥</text></g>);})()}
+        {sel?.type==='green'&&selG&&selG.type!=='circle'&&(()=>{const c=ct(selG.pts);return(<g onMouseDown={e=>hDown(e,'zmove',{layer:'green',idx:sel.idx})} onTouchStart={e=>hDown(e,'zmove',{layer:'green',idx:sel.idx})} style={{cursor:"grab"}}><circle cx={c.x} cy={c.y} r={18} fill="#c87830" opacity=".9" stroke="#fff" strokeWidth="2.5"/><text x={c.x} y={c.y+4} textAnchor="middle" fill="#fff" fontSize="14" fontWeight="800">✥</text></g>);})()}
       </svg>
     </div>
     {hasC&&!isD&&!placing&&<div style={{padding:"5px 10px",borderTop:`1px solid ${DG}12`,display:"flex",alignItems:"center",justifyContent:"space-between",fontSize:8,color:`${DG}66`}}>
